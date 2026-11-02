@@ -493,9 +493,12 @@ public class LoopDetector {
             }
 
             //The natural exit of this loop (from its continue part) leading to the precontinue
-            //of a parent loop is the code after this loop, not a continue of the parent loop
+            //of a parent loop is the code after this loop, not a continue of the parent loop.
+            //The condition can span several parts (&&, || in the condition),
+            //the natural exit is then from its last part.
+            Set<GraphPart> conditionParts = getConditionParts(loop, loopWalkers.get(loop));
             for (GraphPartEdge edge : loop.edgesOutside) {
-                if (edge.from == loop.loopContinue
+                if (conditionParts.contains(edge.from)
                         && !ignoredEdges.contains(edge)
                         && parentContinues.contains(edge.to)
                         && isParentPreContinueOnly(loop, edge.to)) {
@@ -704,6 +707,51 @@ public class LoopDetector {
             }
             loop.loopBreak = candidateList.get(0).part;
         }
+    }
+
+    /**
+     * Gets the parts of the loop condition: the continue part and the parts
+     * entered only from the condition, up to the parts which leave the loop.
+     * A simple condition is only the continue part, a condition with && or ||
+     * has more parts.
+     *
+     * @param loop Loop
+     * @param walker Walker
+     * @return Condition parts
+     */
+    private Set<GraphPart> getConditionParts(Loop loop, PrevNextWalker walker) {
+        Set<GraphPart> exitingParts = new HashSet<>();
+        for (GraphPartEdge edge : loop.edgesOutside) {
+            exitingParts.add(edge.from);
+        }
+        Set<GraphPart> result = new LinkedHashSet<>();
+        result.add(loop.loopContinue);
+        Queue<GraphPart> queue = new ArrayDeque<>();
+        queue.add(loop.loopContinue);
+        while (!queue.isEmpty()) {
+            GraphPart part = queue.poll();
+            if (exitingParts.contains(part)) {
+                //the condition ends here
+                continue;
+            }
+            for (GraphPart next : walker.getNext(part)) {
+                if (!loop.loopBody.contains(next) || result.contains(next)) {
+                    continue;
+                }
+                boolean onlyFromCondition = true;
+                for (GraphPart prev : walker.getPrev(next)) {
+                    if (!result.contains(prev)) {
+                        onlyFromCondition = false;
+                        break;
+                    }
+                }
+                if (onlyFromCondition) {
+                    result.add(next);
+                    queue.add(next);
+                }
+            }
+        }
+        return result;
     }
 
     /**
