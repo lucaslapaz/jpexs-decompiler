@@ -1848,4 +1848,30 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         assertTrue(res.contains("new Object();"), res);
         assertTrue(!res.contains("_loc1_"), res);
     }
+
+    @Test
+    public void testCompoundScriptPackageSlotAssignments() throws Exception {
+        //a script with several public variables: the top-level assignments
+        //to them were removed and their declarations never written
+        String res = recompileSource("package {\n"
+                + "public var a:Object;\n"
+                + "public var b:int;\n"
+                + "public var c:Number;\n"
+                + "public const d:int = 5;\n"
+                + "}\n"
+                + "a = new Object();\n"
+                + "a.x = 1;\n"
+                + "b = 2;\n"
+                + "a = new Object();\n"
+                + "trace(a, b);");
+        res = res.replace("\r\n", "\n");
+        assertTrue(res.contains("public var a:Object = new Object();"), res);
+        assertTrue(res.contains("public var b:int = 2;"), res);
+        assertTrue(res.indexOf("public var a:Object = new Object();") < res.indexOf("a.x = 1;"), res);
+        assertTrue(res.indexOf("a.x = 1;") < res.indexOf("public var b:int = 2;"), res);
+        assertTrue(res.indexOf("public var b:int = 2;") < res.lastIndexOf("a = new Object();"), res);
+        assertTrue(res.contains("trace(a,b);"), res);
+        assertTrue(res.contains("public var c:Number;"), res);
+        assertTrue(res.contains("public const d:int = 5;"), res);
+    }
 }
