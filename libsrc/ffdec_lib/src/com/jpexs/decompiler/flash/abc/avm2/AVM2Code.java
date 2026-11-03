@@ -2928,6 +2928,48 @@ public class AVM2Code implements Cloneable {
                 }
             }
 
+            //A script with a single public (or package internal) trait prints that trait
+            //in its own package block, with the assigned value. A compound script
+            //(more of them) prints its slots here, in place of the assignment.
+            boolean simpleScript = false;
+            if (classIndex == -1 && initTraits != null) {
+                int publicTraitsCount = 0;
+                for (Trait t : initTraits.traits) {
+                    int nsKind = t.getName(abc).getSimpleNamespaceKind(abc.constants);
+                    if (nsKind == Namespace.KIND_PACKAGE || nsKind == Namespace.KIND_PACKAGE_INTERNAL) {
+                        publicTraitsCount++;
+                    }
+                }
+                simpleScript = publicTraitsCount == 1;
+            }
+
+            //Slots of a compound script with no assignment are declared before the code
+            if (initializerType == GraphTextWriter.TRAIT_SCRIPT_INITIALIZER && classIndex == -1 && initTraits != null && !simpleScript) {
+                int pos = 0;
+                for (int j = 0; j < initTraits.traits.size(); j++) {
+                    Trait t = initTraits.traits.get(j);
+                    if (!(t instanceof TraitSlotConst) || convertData.assignedValues.containsKey((TraitSlotConst) t)) {
+                        continue;
+                    }
+                    int nsKind = t.getName(abc).getSimpleNamespaceKind(abc.constants);
+                    if (nsKind != Namespace.KIND_PACKAGE && nsKind != Namespace.KIND_PACKAGE_INTERNAL) {
+                        continue;
+                    }
+                    list.add(pos++, new TraitSlotConstAVM2Item(
+                            null,
+                            null,
+                            (TraitSlotConst) t,
+                            null,
+                            true,
+                            scriptIndex,
+                            classIndex,
+                            GraphTextWriter.TRAIT_SCRIPT_INITIALIZER,
+                            methodIndex,
+                            j
+                    ));
+                }
+            }
+
             for (int i = 0; i < list.size(); i++) {
                 GraphTargetItem ti = list.get(i);
                 if (commandToAssigned.containsKey(ti)) {
@@ -2935,7 +2977,7 @@ public class AVM2Code implements Cloneable {
                     TraitSlotConst tsc = commandToTrait.get(ti);
 
                     int nsKind = tsc.getName(abc).getSimpleNamespaceKind(abc.constants);
-                    if (classIndex == -1 && (nsKind == Namespace.KIND_PACKAGE || nsKind == Namespace.KIND_PACKAGE_INTERNAL)) {
+                    if (simpleScript && (nsKind == Namespace.KIND_PACKAGE || nsKind == Namespace.KIND_PACKAGE_INTERNAL)) {
                         list.remove(i);
                         i--;
                         continue;
