@@ -2959,14 +2959,31 @@ public class AVM2Code implements Cloneable {
 
             if (initializerType == GraphTextWriter.TRAIT_SCRIPT_INITIALIZER) {
 
-                //Eliminate all setlocals, can sometimes happen
+                //Eliminate setlocals of registers that are never read, can sometimes happen.
+                //A register that is read later is a real local variable of the top-level code
+                //and its assignment must stay.
+                final Set<Integer> readRegisters = new HashSet<>();
+                for (GraphTargetItem item : list) {
+                    item.visitRecursively(new AbstractGraphTargetVisitor() {
+                        @Override
+                        public boolean visit(GraphTargetItem subItem) {
+                            if (subItem instanceof LocalRegAVM2Item) {
+                                readRegisters.add(((LocalRegAVM2Item) subItem).regIndex);
+                            }
+                            return true;
+                        }
+                    });
+                    if (item instanceof LocalRegAVM2Item) {
+                        readRegisters.add(((LocalRegAVM2Item) item).regIndex);
+                    }
+                }
                 BlockVisitor bv = new BlockVisitor() {
                     @Override
                     public void visitBlock(List<GraphTargetItem> items) {
 
                         for (int i = 0; i < items.size(); i++) {
                             GraphTargetItem item = items.get(i);
-                            if (item instanceof SetLocalAVM2Item) {
+                            if ((item instanceof SetLocalAVM2Item) && !readRegisters.contains(((SetLocalAVM2Item) item).regIndex)) {
                                 items.set(i, item.value);
                             }
 

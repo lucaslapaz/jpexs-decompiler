@@ -1746,4 +1746,106 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         assertTrue(afterPackage.contains("import flash.utils.getTimer;"), res);
         assertTrue(afterPackage.indexOf("import flash.utils.getTimer;") < afterPackage.indexOf("getTimer();"), res);
     }
+
+    private String decompileScriptInitializer(String pCode) throws Exception {
+        //a script whose initializer is the given p-code (after getlocal0, pushscope)
+        final ABC abc = new ABC(new ABCContainerTag() {
+            @Override
+            public ABC getABC() {
+                return null;
+            }
+
+            @Override
+            public SWF getSwf() {
+                return swf;
+            }
+
+            @Override
+            public int compareTo(ABCContainerTag o) {
+                return 0;
+            }
+
+            @Override
+            public void setABC(ABC abc) {
+            }
+        });
+        AbcIndexing index = swf.getAbcIndex();
+        index.addAbc(abc);
+        index.rebuildPkgToObjectsNameMap();
+        ActionScript3Parser par = new ActionScript3Parser(index);
+        par.addScript("trace(1);", "Test.as", 0, 0, swf.getDocumentClass(), abc);
+        MethodBody b = abc.bodies.get(abc.findBodyIndex(abc.script_info.get(0).init_index));
+        AVM2Code code = ASM3Parser.parse(abc, new StringReader("code\r\ngetlocal0\r\npushscope\r\n" + pCode + "returnvoid\r\n"), null, new MissingSymbolHandler() {
+            @Override
+            public boolean missingString(String value) {
+                return true;
+            }
+
+            @Override
+            public boolean missingInt(long value) {
+                return true;
+            }
+
+            @Override
+            public boolean missingUInt(long value) {
+                return true;
+            }
+
+            @Override
+            public boolean missingDouble(double value) {
+                return true;
+            }
+
+            @Override
+            public boolean missingDecimal(Decimal128 value) {
+                return true;
+            }
+
+            @Override
+            public boolean missingFloat(float value) {
+                return true;
+            }
+
+            @Override
+            public boolean missingFloat4(Float4 value) {
+                return true;
+            }
+        }, b, new MethodInfo());
+        b.setCode(code);
+        b.max_regs = 4;
+        b.max_stack = 10;
+        HighlightedTextWriter writer = new HighlightedTextWriter(new CodeFormatting(), false);
+        abc.script_info.get(0).getPacks(abc, 0, "", new ArrayList<>()).get(0).toSource(swf.getAbcIndex(), writer, abc.script_info.get(0).traits.traits, new ConvertData(), ScriptExportMode.AS, false, false, false);
+        writer.finishHilights();
+        return writer.toString().replace("\r\n", "\n");
+    }
+
+    @Test
+    public void testScriptInitializerLocalRegisters() throws Exception {
+        //top-level code that keeps an object in a local register and reads it
+        //later lost the assignment: "new Object();" and "_loc1_.a = 1;"
+        String res = decompileScriptInitializer("findpropstrict QName(PackageNamespace(\"\"),\"Object\")\r\n"
+                + "constructprop QName(PackageNamespace(\"\"),\"Object\"), 0\r\n"
+                + "setlocal1\r\n"
+                + "getlocal1\r\n"
+                + "pushbyte 1\r\n"
+                + "setproperty QName(PackageNamespace(\"\"),\"a\")\r\n"
+                + "findpropstrict QName(PackageNamespace(\"\"),\"trace\")\r\n"
+                + "getlocal1\r\n"
+                + "getproperty QName(PackageNamespace(\"\"),\"a\")\r\n"
+                + "callpropvoid QName(PackageNamespace(\"\"),\"trace\"), 1\r\n");
+        assertTrue(res.contains("var _loc1_:Object = new Object();"), res);
+        assertTrue(res.indexOf("var _loc1_:Object = new Object();") < res.indexOf("_loc1_.a = 1;"), res);
+        assertTrue(res.contains("trace(_loc1_.a);"), res);
+    }
+
+    @Test
+    public void testScriptInitializerUnreadLocalRegister() throws Exception {
+        //a register that is only written is still eliminated
+        String res = decompileScriptInitializer("findpropstrict QName(PackageNamespace(\"\"),\"Object\")\r\n"
+                + "constructprop QName(PackageNamespace(\"\"),\"Object\"), 0\r\n"
+                + "setlocal1\r\n");
+        assertTrue(res.contains("new Object();"), res);
+        assertTrue(!res.contains("_loc1_"), res);
+    }
 }
