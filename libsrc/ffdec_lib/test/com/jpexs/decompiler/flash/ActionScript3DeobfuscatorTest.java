@@ -18,6 +18,7 @@ package com.jpexs.decompiler.flash;
 
 import com.jpexs.decompiler.flash.abc.ABC;
 import com.jpexs.decompiler.flash.abc.ScriptPack;
+import com.jpexs.decompiler.flash.abc.avm2.deobfuscation.AVM2DeobfuscatorSimpleOld;
 import com.jpexs.decompiler.flash.abc.avm2.AVM2Code;
 import com.jpexs.decompiler.flash.abc.avm2.deobfuscation.AVM2DeobfuscatorGroupParts;
 import com.jpexs.decompiler.flash.abc.avm2.deobfuscation.AVM2DeobfuscatorJumps;
@@ -221,6 +222,7 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         MethodBody b = new MethodBody(abc, new Traits(), new byte[0], new ABCException[0]);
         AVM2Code code = ASM3Parser.parse(abc, new StringReader(str), null, b, new MethodInfo());
         b.setCode(code);
+        abc.addMethodInfo(new MethodInfo(new int[]{0}, 0, 0, 0, new ValueKind[0], new int[0]));
         deobfuscator.avm2CodeRemoveTraps("test", 0, true, 0, abc, null, 0, b);
         HighlightedTextWriter writer = new HighlightedTextWriter(new CodeFormatting(), false);
         code.toASMSource(abc, abc.constants, new MethodInfo(), new MethodBody(abc, new Traits(), new byte[0], new ABCException[0]), ScriptExportMode.PCODE, writer);
@@ -2021,5 +2023,21 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
                 + "returnvoid\n");
         assertTrue(res.contains("trace(1);"), res);
         assertTrue(!res.contains("newclass"), res);
+    }
+
+    @Test
+    public void testDeobfuscatorStopsAtTotalExecutionLimit() throws Exception {
+        //each instruction starts a simulation of up to 30000 instructions: the
+        //deobfuscator did not end in big methods compiled by FlasCC. It stops at a limit,
+        //with the code still valid
+        String pCode = "pushtrue\niffalse skip\npushbyte 1\npop\nskip:\nreturnvoid\n";
+        String all = recompilePCode(pCode, new AVM2DeobfuscatorSimpleOld());
+        assertTrue(!all.contains("iffalse"), all);
+        String limited = recompilePCode(pCode, new AVM2DeobfuscatorSimpleOld() {
+            {
+                totalExecutionLimit = 0;
+            }
+        });
+        assertTrue(limited.contains("iffalse"), limited);
     }
 }
