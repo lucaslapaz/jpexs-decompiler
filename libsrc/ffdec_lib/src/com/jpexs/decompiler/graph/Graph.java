@@ -3840,12 +3840,6 @@ public class Graph {
     }
 
     /**
-     * Parts that a goto jumps to before they were printed. They get the label
-     * when they are printed.
-     */
-    private final Set<GraphPart> gotoTargets = new HashSet<>();
-
-    /**
      * Checks whether a command cannot be written as an expression: a block,
      * or a temporary, which can end up as a var declaration.
      *
@@ -4081,8 +4075,9 @@ public class Graph {
                     }
                 }
 
-                //A stop part from outside an open loop, which is not its break:
-                //stopping here would run the next iteration of the loop instead.
+                //A stop part from outside an open loop, which is not its break: stopping here
+                //would run the next iteration of the loop instead. Its code goes here, and the
+                //place of the stop part gets a goto to it.
                 boolean leavesLoop = false;
                 if (isRealStopPart) {
                     int stopIndex = stopPart.lastIndexOf(part);
@@ -4092,13 +4087,6 @@ public class Graph {
                             break;
                         }
                     }
-                }
-                if (leavesLoop && !visited.contains(part)) {
-                    makeAllCommands(ret, stack);
-                    gotoTargets.add(part);
-                    ret.add(new GotoItem(dialect, null, localData.lineStartInstruction, "addr" + Helper.formatAddress(code.pos2adr(part.start, true))));
-                    localData.gotosUsed.setVal(true);
-                    break loopPrintGraph;
                 }
                 if (isRealStopPart && !leavesLoop) {
                     if (currentLoop != null) {
@@ -4151,11 +4139,6 @@ public class Graph {
                     visited.add(part);
                     partCodes.put(part, ret);
                     partCodePos.put(part, ret.size());
-                    if (gotoTargets.contains(part)) {
-                        makeAllCommands(ret, stack);
-                        partCodePos.put(part, ret.size());
-                        ret.add(new LabelItem(dialect, null, localData.lineStartInstruction, "addr" + Helper.formatAddress(code.pos2adr(part.start, true))));
-                    }
                 }
             }
             currentRet = ret;
