@@ -3840,6 +3840,23 @@ public class Graph {
     }
 
     /**
+     * Parts that a goto jumps to before they were printed. They get the label
+     * when they are printed.
+     */
+    private final Set<GraphPart> gotoTargets = new HashSet<>();
+
+    /**
+     * Checks whether a command cannot be written as an expression: a block,
+     * or a temporary, which can end up as a var declaration.
+     *
+     * @param item Command
+     * @return True if it can only be a statement
+     */
+    private static boolean isStatementOnly(GraphTargetItem item) {
+        return item instanceof Block || item instanceof SetTemporaryItem;
+    }
+
+    /**
      * Walks graph parts and converts them to target items.
      *
      * @param hasEmptyStackPops Has empty stack pops
@@ -3946,6 +3963,7 @@ public class Graph {
                     if (vCanHandleLoop) {
                         currentLoop = el;
                         currentLoop.phase = 1;
+                        currentLoop.stopPartsAtOpen = stopPart.size();
                         isLoop = true;
                     } else {
                         ignoredLoop = el;
@@ -4063,7 +4081,26 @@ public class Graph {
                     }
                 }
 
+                //A stop part from outside an open loop, which is not its break:
+                //stopping here would run the next iteration of the loop instead.
+                boolean leavesLoop = false;
                 if (isRealStopPart) {
+                    int stopIndex = stopPart.lastIndexOf(part);
+                    for (Loop el : loops) {
+                        if (el != currentLoop && el.loopContinue != null && el.phase == 1 && stopIndex < el.stopPartsAtOpen) {
+                            leavesLoop = true;
+                            break;
+                        }
+                    }
+                }
+                if (leavesLoop && !visited.contains(part)) {
+                    makeAllCommands(ret, stack);
+                    gotoTargets.add(part);
+                    ret.add(new GotoItem(dialect, null, localData.lineStartInstruction, "addr" + Helper.formatAddress(code.pos2adr(part.start, true))));
+                    localData.gotosUsed.setVal(true);
+                    break loopPrintGraph;
+                }
+                if (isRealStopPart && !leavesLoop) {
                     if (currentLoop != null) {
                         currentLoop.phase = 0;
                     }
@@ -4114,6 +4151,11 @@ public class Graph {
                     visited.add(part);
                     partCodes.put(part, ret);
                     partCodePos.put(part, ret.size());
+                    if (gotoTargets.contains(part)) {
+                        makeAllCommands(ret, stack);
+                        partCodePos.put(part, ret.size());
+                        ret.add(new LabelItem(dialect, null, localData.lineStartInstruction, "addr" + Helper.formatAddress(code.pos2adr(part.start, true))));
+                    }
                 }
             }
             currentRet = ret;
@@ -4167,6 +4209,13 @@ public class Graph {
                                 && ((ifi.onFalse.size() == 1) && (ifi.onFalse.get(0) instanceof BreakItem) && (((BreakItem) ifi.onFalse.get(0)).loopId == currentLoop.id))) {
                             ok = true;
                         }
+                        //the commands before the condition are written inside the do..while condition,
+                        //where only expressions fit
+                        for (int i = 0; ok && i < precontinueCommands.size() - 1; i++) {
+                            if (isStatementOnly(precontinueCommands.get(i))) {
+                                ok = false;
+                            }
+                        }
                         if (ok) {
                             doWhileCandidate = true;
                         }
@@ -4174,7 +4223,7 @@ public class Graph {
 
                     if (!doWhileCandidate) {
                         for (GraphTargetItem item : precontinueCommands) {
-                            if (item instanceof Block) {
+                            if (isStatementOnly(item)) {
                                 currentLoop.loopPreContinue = null;
                                 break;
                             }
