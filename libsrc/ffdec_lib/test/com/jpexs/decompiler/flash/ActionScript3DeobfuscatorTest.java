@@ -17,6 +17,7 @@
 package com.jpexs.decompiler.flash;
 
 import com.jpexs.decompiler.flash.abc.ABC;
+import com.jpexs.decompiler.flash.abc.ScriptPack;
 import com.jpexs.decompiler.flash.abc.avm2.AVM2Code;
 import com.jpexs.decompiler.flash.abc.avm2.deobfuscation.AVM2DeobfuscatorGroupParts;
 import com.jpexs.decompiler.flash.abc.avm2.deobfuscation.AVM2DeobfuscatorJumps;
@@ -51,6 +52,7 @@ import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.concurrent.TimeoutException;
 import macromedia.asc.util.Decimal128;
 import org.testng.Assert;
@@ -236,6 +238,10 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
     }
 
     private String recompileSource(String str) throws AVM2ParseException, IOException, CompilationException, InterruptedException {
+        return recompileSource(str, null);
+    }
+
+    private String recompileSource(String str, String scriptInitPCode) throws AVM2ParseException, IOException, CompilationException, InterruptedException {
         final ABC abc = new ABC(new ABCContainerTag() {
             @Override
             public ABC getABC() {
@@ -263,7 +269,49 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         HighlightedTextWriter writer = new HighlightedTextWriter(new CodeFormatting(), false);
         par.addScript(str, "Test.as", 0, 0, swf.getDocumentClass(), abc);
 
-        abc.script_info.get(0).getPacks(abc, 0, "", new ArrayList<>()).get(0).toSource(swf.getAbcIndex(), writer, abc.script_info.get(0).traits.traits, new ConvertData(), ScriptExportMode.AS, false, false, false);
+        List<ScriptPack> packs = abc.script_info.get(0).getPacks(abc, 0, "", new ArrayList<>());
+        if (scriptInitPCode != null) {
+            MethodBody body = abc.findBody(abc.script_info.get(0).init_index);
+            body.setCode(ASM3Parser.parse(abc, new StringReader(scriptInitPCode), null, new MissingSymbolHandler() {
+                @Override
+                public boolean missingString(String value) {
+                    return true;
+                }
+
+                @Override
+                public boolean missingInt(long value) {
+                    return true;
+                }
+
+                @Override
+                public boolean missingUInt(long value) {
+                    return true;
+                }
+
+                @Override
+                public boolean missingDouble(double value) {
+                    return true;
+                }
+
+                @Override
+                public boolean missingFloat(float value) {
+                    return true;
+                }
+
+                @Override
+                public boolean missingDecimal(Decimal128 value) {
+                    return true;
+                }
+
+                @Override
+                public boolean missingFloat4(Float4 value) {
+                    return true;
+                }
+            }, body, abc.method_info.get(abc.script_info.get(0).init_index)));
+        }
+        for (ScriptPack pack : scriptInitPCode != null ? packs : packs.subList(0, 1)) {
+            pack.toSource(swf.getAbcIndex(), writer, abc.script_info.get(0).traits.traits, new ConvertData(), ScriptExportMode.AS, false, false, false);
+        }
         writer.finishHilights();
         return writer.toString();
     }
@@ -1945,5 +1993,33 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
                 + "         _loc2_ = 7;\n"
                 + "         addr0033:\n"
                 + "         _loc2_ = 8;\n");
+    }
+
+    @Test
+    public void testCompoundScriptClassesAreNotInCode() throws Exception {
+        //the classes of a script made by FlasCC, with dup: this.A = §§newclass(A,_temp_1) in the initializer
+        String res = recompileSource("package {\n"
+                + "public var a:int;\n"
+                + "public class A {}\n"
+                + "public class B {}\n"
+                + "}\n"
+                + "a = 1;\n"
+                + "trace(a);",
+                "code\n"
+                + "getlocal0\n"
+                + "pushscope\n"
+                + "getscopeobject 0\n"
+                + "getlex QName(PackageNamespace(\"\"),\"Object\")\n"
+                + "dup\n"
+                + "pushscope\n"
+                + "newclass 0\n"
+                + "popscope\n"
+                + "initproperty QName(PackageNamespace(\"\"),\"A\")\n"
+                + "findpropstrict QName(PackageNamespace(\"\"),\"trace\")\n"
+                + "pushbyte 1\n"
+                + "callpropvoid QName(PackageNamespace(\"\"),\"trace\"), 1\n"
+                + "returnvoid\n");
+        assertTrue(res.contains("trace(1);"), res);
+        assertTrue(!res.contains("newclass"), res);
     }
 }
