@@ -176,6 +176,19 @@ public class AVM2DeobfuscatorSimpleOld extends AVM2DeobfuscatorZeroJumpsNullPush
     private final int executionLimit = 30000;
 
     /**
+     * Limit of instructions simulated for a whole method. Each instruction of a
+     * method starts a simulation of up to executionLimit instructions, which
+     * does not end in big methods whose values are known (C++ compiled by
+     * FlasCC). The code stays valid, with the rest not deobfuscated.
+     */
+    protected long totalExecutionLimit = 3000000;
+
+    /**
+     * Instructions simulated so far
+     */
+    private long totalExecuted = 0;
+
+    /**
      * Constructor.
      */
     public AVM2DeobfuscatorSimpleOld() {
@@ -260,6 +273,10 @@ public class AVM2DeobfuscatorSimpleOld extends AVM2DeobfuscatorZeroJumpsNullPush
         for (int i = 0; i < code.code.size(); i++) {
             if (CancellableWorker.isInterrupted()) {
                 throw new InterruptedException();
+            }
+
+            if (totalExecuted >= totalExecutionLimit) {
+                break;
             }
 
             // Every attempt starts with an empty operand stack.
@@ -438,6 +455,7 @@ public class AVM2DeobfuscatorSimpleOld extends AVM2DeobfuscatorZeroJumpsNullPush
             if (instructionsProcessed > executionLimit) {
                 break;
             }
+            totalExecuted++;
 
             AVM2Instruction ins = replacements.get(idx);
             InstructionDefinition def = ins.definition;
