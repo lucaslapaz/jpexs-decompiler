@@ -246,6 +246,7 @@ import com.jpexs.decompiler.flash.abc.avm2.instructions.xml.DXNSIns;
 import com.jpexs.decompiler.flash.abc.avm2.instructions.xml.DXNSLateIns;
 import com.jpexs.decompiler.flash.abc.avm2.instructions.xml.EscXAttrIns;
 import com.jpexs.decompiler.flash.abc.avm2.instructions.xml.EscXElemIns;
+import com.jpexs.decompiler.flash.abc.avm2.model.UnparsedAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.AVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.CoerceAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.ConvertAVM2Item;
@@ -2941,6 +2942,18 @@ public class AVM2Code implements Cloneable {
                     }
                 }
                 simpleScript = publicTraitsCount == 1;
+            }
+
+            //The classes of a script are written on their own, in their files
+            if (initializerType == GraphTextWriter.TRAIT_SCRIPT_INITIALIZER && classIndex == -1) {
+                for (int i = list.size() - 1; i >= 0; i--) {
+                    GraphTargetItem ti = list.get(i);
+                    if ((ti instanceof InitPropertyAVM2Item || ti instanceof SetPropertyAVM2Item)
+                            && ti.value instanceof UnparsedAVM2Item
+                            && ((UnparsedAVM2Item) ti.value).value.startsWith("§§newclass(")) {
+                        list.remove(i);
+                    }
+                }
             }
 
             //Slots of a compound script with no assignment are declared before the code
