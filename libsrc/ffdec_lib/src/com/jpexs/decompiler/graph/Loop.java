@@ -31,6 +31,12 @@ import java.util.Set;
 public class Loop implements Serializable {
 
     /**
+     * Count of the stop parts when the loop was opened. The ones before this
+     * index are outside the loop.
+     */
+    public int stopPartsAtOpen = 0;
+
+    /**
      * Continue part of the loop
      */
     public GraphPart loopContinue;
