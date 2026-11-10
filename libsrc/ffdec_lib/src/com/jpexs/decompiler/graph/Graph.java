@@ -3954,10 +3954,10 @@ public class Graph {
         for (Loop l : loops) {
             byId.put(l.id, l);
         }
-        fixJumpsToLoopsNotInResult(list, new HashSet<>(), byId, partCodes, partCodePos);
+        fixJumpsToLoopsNotInResult(list, list, new HashSet<>(), byId, partCodes, partCodePos);
     }
 
-    private void fixJumpsToLoopsNotInResult(List<GraphTargetItem> list, Set<Long> enclosing, Map<Long, Loop> loops, Map<GraphPart, List<GraphTargetItem>> partCodes, Map<GraphPart, Integer> partCodePos) {
+    private void fixJumpsToLoopsNotInResult(List<GraphTargetItem> root, List<GraphTargetItem> list, Set<Long> enclosing, Map<Long, Loop> loops, Map<GraphPart, List<GraphTargetItem>> partCodes, Map<GraphPart, Integer> partCodePos) {
         for (int i = 0; i < list.size(); i++) {
             GraphTargetItem item = list.get(i);
             long loopId = -1;
@@ -3971,7 +3971,7 @@ public class Graph {
             if (loopId != -1 && !enclosing.contains(loopId) && loops.containsKey(loopId)) {
                 Loop l = loops.get(loopId);
                 GraphPart target = isBreak ? l.loopBreak : (l.loopPreContinue != null ? l.loopPreContinue : l.loopContinue);
-                String labelName = labelOfPart(target, partCodes, partCodePos);
+                String labelName = labelOfPart(root, target, partCodes, partCodePos);
                 if (labelName != null) {
                     list.set(i, new GotoItem(dialect, null, item.getLineStartItem(), labelName));
                 }
@@ -3984,7 +3984,7 @@ public class Graph {
                     inner.add(((LoopItem) item).loop.id);
                 }
                 for (List<GraphTargetItem> sub : ((Block) item).getSubs()) {
-                    fixJumpsToLoopsNotInResult(sub, inner, loops, partCodes, partCodePos);
+                    fixJumpsToLoopsNotInResult(root, sub, inner, loops, partCodes, partCodePos);
                 }
             }
         }
@@ -3994,28 +3994,68 @@ public class Graph {
      * The label of the code of a part, for a goto to it: the label already there,
      * or a new one, written before the first command of the part (see
      * restoreLostLabels). Null when the part was not written.
+     * <p>
+     * The commands may have left the list where the part was written (processIfs
+     * moves the commands of a branch to the list of the if and clears the
+     * branch): then the code of the part is the command of the result made by
+     * the first instruction of the part.
      *
+     * @param root Result
      * @param part Part
      * @param partCodes Lists where each part was written
      * @param partCodePos Position of each part in its list
      * @return Label name or null
      */
-    private String labelOfPart(GraphPart part, Map<GraphPart, List<GraphTargetItem>> partCodes, Map<GraphPart, Integer> partCodePos) {
+    private String labelOfPart(List<GraphTargetItem> root, GraphPart part, Map<GraphPart, List<GraphTargetItem>> partCodes, Map<GraphPart, Integer> partCodePos) {
         if (part == null || !partCodes.containsKey(part) || !partCodePos.containsKey(part)) {
             return null;
         }
         List<GraphTargetItem> code = partCodes.get(part);
         int pos = partCodePos.get(part);
-        if (pos >= code.size()) {
-            return null;
+        GraphTargetItem first;
+        if (pos < code.size()) {
+            first = code.get(pos);
+        } else {
+            GraphTargetItem[] found = new GraphTargetItem[1];
+            findFirstCommandOfPart(root, part, found, new int[]{Integer.MAX_VALUE});
+            if (found[0] == null) {
+                return null;
+            }
+            first = found[0];
         }
-        GraphTargetItem first = code.get(pos);
         if (first instanceof LabelItem) {
             return ((LabelItem) first).labelName;
         }
         String labelName = "addr" + Helper.formatAddress(this.code.pos2adr(part.start, true));
         labelAnchors.put(first, labelName);
         return labelName;
+    }
+
+    /**
+     * Finds the command of the result made by the first instruction of the part
+     * (the lowest instruction of the part that made a command).
+     *
+     * @param list Commands
+     * @param part Part
+     * @param found The command found
+     * @param foundIp Instruction position of the command found
+     */
+    private void findFirstCommandOfPart(List<GraphTargetItem> list, GraphPart part, GraphTargetItem[] found, int[] foundIp) {
+        for (GraphTargetItem item : list) {
+            GraphSourceItem src = item.getSrc();
+            if (src != null && !(item instanceof LabelItem)) {
+                int ip = code.adr2pos(src.getAddress(), true);
+                if (ip >= part.start && ip <= part.end && ip < foundIp[0]) {
+                    found[0] = item;
+                    foundIp[0] = ip;
+                }
+            }
+            if (item instanceof Block) {
+                for (List<GraphTargetItem> sub : ((Block) item).getSubs()) {
+                    findFirstCommandOfPart(sub, part, found, foundIp);
+                }
+            }
+        }
     }
 
     private void collectLabels(List<GraphTargetItem> list, Set<String> present) {
