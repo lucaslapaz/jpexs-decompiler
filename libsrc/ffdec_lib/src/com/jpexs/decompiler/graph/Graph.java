@@ -2706,6 +2706,22 @@ public class Graph {
     }
 
     /**
+     * Restores where each part was written, as it was before writing commands
+     * that were thrown away.
+     *
+     * @param partCodes Lists where each part was written
+     * @param partCodePos Position of each part in its list
+     * @param partCodesBefore Lists before
+     * @param partCodePosBefore Positions before
+     */
+    private void restorePartCodes(Map<GraphPart, List<GraphTargetItem>> partCodes, Map<GraphPart, Integer> partCodePos, Map<GraphPart, List<GraphTargetItem>> partCodesBefore, Map<GraphPart, Integer> partCodePosBefore) {
+        partCodes.clear();
+        partCodes.putAll(partCodesBefore);
+        partCodePos.clear();
+        partCodePos.putAll(partCodePosBefore);
+    }
+
+    /**
      * Whether the item is a label or has one inside.
      *
      * @param item Item
@@ -4382,6 +4398,12 @@ public class Graph {
                     for (Loop el : loops) {
                         loopPhases.add(el.phase);
                     }
+                    /*
+                     * Save where each part was written, to restore it when the
+                     * precontinue commands are not used
+                     */
+                    Map<GraphPart, List<GraphTargetItem>> partCodesBefore = new HashMap<>(partCodes);
+                    Map<GraphPart, Integer> partCodePosBefore = new HashMap<>(partCodePos);
                     precontinueCommands = printGraph(hasEmptyStackPops, foundGotos, partCodes, partCodePos, subVisited, localData, new TranslateStack(path), allParts, null, backup, stopPart2, stopPartKind2, loops, throwStates, null, staticOperation, path, recursionLevel + 1);
                     currentLoop.loopPreContinue = backup;
                     checkContinueAtTheEnd(precontinueCommands, currentLoop);
@@ -4420,6 +4442,13 @@ public class Graph {
                         }
                         if (currentLoop.loopPreContinue == null) {
                             precontinueCommands.clear();
+
+                            /*
+                             * The parts are written again in the loop: a goto to
+                             * one of them must not put its label in the commands
+                             * thrown away
+                             */
+                            restorePartCodes(partCodes, partCodePos, partCodesBefore, partCodePosBefore);
 
                             /*
                              * Restore loop phases
