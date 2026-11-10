@@ -1185,6 +1185,7 @@ public class Graph {
          }
          System.err.println("</loopspre>");//*/
         List<GotoItem> gotos = new ArrayList<>();
+        labelAnchors.clear();
 
         Reference<Boolean> hasEmptyStackPops = new Reference<>(false);
         List<GraphTargetItem> ret = printGraph(hasEmptyStackPops, gotos, new HashMap<>(), new HashMap<>(), new HashSet<>(), localData, stack, allParts, null, heads.get(0), null, null, loops, throwStates, staticOperation, path);
@@ -1199,6 +1200,7 @@ public class Graph {
         processIfGotos2(new ArrayList<>(), gotos, ret, ret);
         processIfGotos(gotos, ret, ret);
         processScriptEnd(ret);
+        restoreLostLabels(ret);
 
         Map<String, Integer> usages = new HashMap<>();
         Map<String, GotoItem> lastUsage = new HashMap<>();
@@ -3840,6 +3842,58 @@ public class Graph {
     }
 
     /**
+     * The command that follows each goto label, for the labels that a copy of
+     * the list lost (see restoreLostLabels).
+     */
+    private final Map<GraphTargetItem, String> labelAnchors = new IdentityHashMap<>();
+
+    /**
+     * Writes again the goto labels that are missing in the result: the label was
+     * added to a list that the loop handling had copied already, and the goto had
+     * no label. The label goes before the command that followed it.
+     *
+     * @param list Result
+     */
+    private void restoreLostLabels(List<GraphTargetItem> list) {
+        if (labelAnchors.isEmpty()) {
+            return;
+        }
+        Set<String> present = new HashSet<>();
+        collectLabels(list, present);
+        insertLostLabels(list, present);
+    }
+
+    private void collectLabels(List<GraphTargetItem> list, Set<String> present) {
+        for (GraphTargetItem item : list) {
+            if (item instanceof LabelItem) {
+                present.add(((LabelItem) item).labelName);
+            }
+            if (item instanceof Block) {
+                for (List<GraphTargetItem> sub : ((Block) item).getSubs()) {
+                    collectLabels(sub, present);
+                }
+            }
+        }
+    }
+
+    private void insertLostLabels(List<GraphTargetItem> list, Set<String> present) {
+        for (int i = 0; i < list.size(); i++) {
+            GraphTargetItem item = list.get(i);
+            String labelName = labelAnchors.get(item);
+            if (labelName != null && !present.contains(labelName)) {
+                list.add(i, new LabelItem(dialect, null, item.getLineStartItem(), labelName));
+                present.add(labelName);
+                i++;
+            }
+            if (item instanceof Block) {
+                for (List<GraphTargetItem> sub : ((Block) item).getSubs()) {
+                    insertLostLabels(sub, present);
+                }
+            }
+        }
+    }
+
+    /**
      * Checks whether a command cannot be written as an expression: a block,
      * or a temporary, which can end up as a var declaration.
      *
@@ -4142,6 +4196,11 @@ public class Graph {
                         labelName = ((LabelItem) firstCode.get(firstCodePos)).labelName;
                     } else {
                         firstCode.add(firstCodePos, new LabelItem(dialect, null, localData.lineStartInstruction, labelName));
+                    }
+                    //the list may have been copied already (the loop handling copies the commands of
+                    //the loop): the label goes before the command that follows it, wherever it ends up
+                    if (!labelFound && firstCode.size() > firstCodePos + 1 && !(firstCode.get(firstCodePos + 1) instanceof LabelItem)) {
+                        labelAnchors.put(firstCode.get(firstCodePos + 1), labelName);
                     }
                     ret.add(new GotoItem(dialect, null, localData.lineStartInstruction, labelName));
                     localData.gotosUsed.setVal(true);

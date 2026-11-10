@@ -104,6 +104,10 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
     }
 
     private void decompilePCode(String pCode, String expected, boolean deobfuscate) throws Exception {
+        assertEquals(decompilePCodeSource(pCode, deobfuscate), expected);
+    }
+
+    private String decompilePCodeSource(String pCode, boolean deobfuscate) throws Exception {
         pCode = "code\r\n"
                 + "getlocal0\r\n"
                 + "pushscope\r\n"
@@ -189,8 +193,7 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         }
         HighlightedTextWriter writer = new HighlightedTextWriter(new CodeFormatting(), false);
         String actual = b.toSource(new LinkedHashSet<>(), 10, new ArrayList<>(), swf.getAbcIndex(), 0, new HashSet<>(), -1);
-        actual = actual.replace("\r\n", "\n");
-        assertEquals(actual, expected);
+        return actual.replace("\r\n", "\n");
     }
 
     private String recompilePCode(String str, SWFDecompilerAdapter deobfuscator) throws IOException, AVM2ParseException, InterruptedException {
@@ -2046,5 +2049,102 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
                 "         var _loc2_:int = sxi8(param1);\n"
                 + "         _loc2_ = sxi16(param1);\n"
                 + "         _loc2_ = sxi1(param1);\n");
+    }
+
+    @Test
+    public void testGotoLabelLostInCopiedList() throws Exception {
+        //the goto to code already written inside a loop added the label to the list where
+        //that code was first written, which the loop handling had copied already: the goto
+        //had no label. The control flow of a function compiled by FlasCC, with each block
+        //replaced by a mark
+        String pCode = String.join("\n", new String[]{
+                "pushbyte 1",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 1",
+                "iflt ofs00b1",
+                "ofs007a:",
+                "pushbyte 2",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 2",
+                "ifgt ofs007a",
+                "pushbyte 3",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 3",
+                "iflt ofs00b1",
+                "pushbyte 4",
+                "setlocal 3",
+                "jump ofs0120",
+                "ofs00b1:",
+                "pushbyte 5",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 4",
+                "ifeq ofs00d7",
+                "pushbyte 6",
+                "setlocal 3",
+                "jump ofs0161",
+                "ofs00d7:",
+                "pushbyte 7",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 5",
+                "ifgt ofs0120",
+                "pushbyte 8",
+                "setlocal 3",
+                "jump ofs0150",
+                "ofs0120:",
+                "pushbyte 9",
+                "setlocal 3",
+                "ofs0150:",
+                "pushbyte 10",
+                "setlocal 3",
+                "ofs0161:",
+                "pushbyte 11",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 6",
+                "iflt ofs01f2",
+                "ofs0186:",
+                "pushbyte 12",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 7",
+                "ifne ofs0186",
+                "pushbyte 13",
+                "setlocal 3",
+                "jump ofs01ff",
+                "ofs01f2:",
+                "pushbyte 14",
+                "setlocal 3",
+                "ofs01ff:",
+                "pushbyte 15",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 8",
+                "ifge ofs026e",
+                "pushbyte 16",
+                "setlocal 3",
+                "ofs0216:",
+                "pushbyte 17",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 9",
+                "ifne ofs0216",
+                "ofs026e:",
+                "pushbyte 18",
+                "setlocal 3",
+                "returnvoid"
+        }) + "\n";
+        String res = decompilePCodeSource(pCode, true);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("§§goto\\((addr[0-9a-f]+)\\)").matcher(res);
+        boolean found = false;
+        while (m.find()) {
+            found = true;
+            assertTrue(res.contains(m.group(1) + ":"), res);
+        }
+        assertTrue(found, res);
     }
 }
