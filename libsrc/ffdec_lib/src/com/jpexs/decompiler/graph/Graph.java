@@ -2323,6 +2323,11 @@ public class Graph {
                     }
                     if (outerContinue != null) {
                         outerContinuation = new ArrayList<>(whi.commands.subList(1, whi.commands.size() - 1));
+                        //the continuation goes after the while: a break or continue of the
+                        //while there would have no loop
+                        if (hasJumpToLoop(outerContinuation, whi.loop.id)) {
+                            outerContinue = null;
+                        }
                     }
                 }
             }
@@ -2386,6 +2391,32 @@ public class Graph {
                 list.addAll(outerContinuation);
             }
         }
+    }
+
+    /**
+     * Whether the commands have a break or continue of the loop.
+     *
+     * @param commands Commands
+     * @param loopId Loop id
+     * @return True when they jump to the loop
+     */
+    private boolean hasJumpToLoop(List<GraphTargetItem> commands, long loopId) {
+        for (GraphTargetItem ti : commands) {
+            if (ti instanceof BreakItem && ((BreakItem) ti).loopId == loopId) {
+                return true;
+            }
+            if (ti instanceof ContinueItem && ((ContinueItem) ti).loopId == loopId) {
+                return true;
+            }
+            if (ti instanceof Block) {
+                for (List<GraphTargetItem> sub : ((Block) ti).getSubs()) {
+                    if (hasJumpToLoop(sub, loopId)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**
