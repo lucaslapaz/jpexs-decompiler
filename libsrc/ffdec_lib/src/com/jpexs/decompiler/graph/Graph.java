@@ -4400,6 +4400,15 @@ public class Graph {
                         ((GraphPartMarkedArrayList<GraphTargetItem>) firstCode).clearCurrentParts();
                         ((GraphPartMarkedArrayList<GraphTargetItem>) firstCode).startPart(part);
                     }
+                    //the part starts a loop written there: the label goes before the loop, not
+                    //after it, where the list marks the part
+                    int loopPos = partCodePos.get(part);
+                    if (loopPos < firstCode.size() && (firstCode.get(loopPos) instanceof LoopItem)) {
+                        Loop writtenLoop = ((LoopItem) firstCode.get(loopPos)).loop;
+                        if (writtenLoop != null && writtenLoop.loopContinue == part) {
+                            firstCodePos = loopPos;
+                        }
+                    }
 
                     boolean labelFound = false;
                     for (GraphTargetItem item : firstCode) {
