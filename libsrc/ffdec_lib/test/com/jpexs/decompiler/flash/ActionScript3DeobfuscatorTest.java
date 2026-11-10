@@ -4992,4 +4992,189 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         String res = decompilePCodeSource(pCode, true);
         assertJumpsHaveTargets(res);
     }
+
+    @Test
+    public void testCatchInsideLoopKeepsItsCode() throws Exception {
+        //a function compiled by FlasCC that calls setjmp is a loop around a try, and the
+        //catch of the longjmp throws it on or sets the registers from it and goes round the
+        //loop again: the throw became the break of the loop and the rest of the catch its
+        //precontinue, both written out of the catch, where the catch variable is not known.
+        //The control flow of the try is reduced to marks
+        String pCode = String.join("\n", new String[]{
+                "pushbyte 1",
+                "setlocal 3",
+                "jump ofs03a4",
+                "ofs004c:",
+                "ofs004d:",
+                "pushbyte 2",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 1",
+                "ifne ofs0338",
+                "pushbyte 3",
+                "setlocal 3",
+                "ofs00c8:",
+                "pushbyte 4",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 2",
+                "ifne ofs0322",
+                "pushbyte 5",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 3",
+                "ifeq ofs02f0",
+                "pushbyte 6",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 4",
+                "ifeq ofs0228",
+                "pushbyte 7",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 5",
+                "iflt ofs015d",
+                "pushbyte 8",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 6",
+                "ifle ofs015d",
+                "pushbyte 9",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 7",
+                "ifne ofs0228",
+                "ofs015d:",
+                "pushbyte 10",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 8",
+                "ifeq ofs01d4",
+                "pushbyte 11",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 9",
+                "iflt ofs01d4",
+                "pushbyte 12",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 10",
+                "ifle ofs01d4",
+                "pushbyte 13",
+                "setlocal 3",
+                "jump ofs0228",
+                "ofs01d4:",
+                "pushbyte 14",
+                "setlocal 3",
+                "ofs01f5:",
+                "pushbyte 15",
+                "setlocal 3",
+                "ofs0228:",
+                "pushbyte 16",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 11",
+                "ifne ofs02f0",
+                "pushbyte 17",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 12",
+                "ifeq ofs02f0",
+                "pushbyte 18",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 13",
+                "ifne ofs02f0",
+                "pushbyte 19",
+                "setlocal 3",
+                "ofs02f0:",
+                "pushbyte 20",
+                "setlocal 3",
+                "returnvoid",
+                "ofs0322:",
+                "pushbyte 21",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 14",
+                "ifeq ofs01f5",
+                "ofs0333:",
+                "jump ofs0333",
+                "ofs0338:",
+                "pushbyte 22",
+                "setlocal 3",
+                "getlocal1",
+                "lookupswitch ofs0347, [ofs034b]",
+                "ofs0347:",
+                "jump ofs034f",
+                "ofs034b:",
+                "jump ofs00c8",
+                "ofs034f:",
+                "pushbyte 23",
+                "setlocal 3",
+                "getlocal1",
+                "throw",
+                "ofs0355:",
+                "ofs0356:",
+                "getlocal0",
+                "dup",
+                "pushscope",
+                "pushscope",
+                "newcatch 0",
+                "dup",
+                "setlocal 19",
+                "dup",
+                "pushscope",
+                "swap",
+                "setslot 1",
+                "getlex QName(PackageInternalNs(\"module\"),\"l\")",
+                "getproperty QName(PackageNamespace(\"\"),\"esp\")",
+                "getlocal 16",
+                "ifnge ofs0376",
+                "getlex QName(PackageInternalNs(\"module\"),\"l\")",
+                "throw",
+                "ofs0376:",
+                "getlex QName(PackageInternalNs(\"module\"),\"l\")",
+                "getproperty QName(PackageNamespace(\"\"),\"esp\")",
+                "dup",
+                "convert_i",
+                "setlocal1",
+                "findproperty QName(PackageNamespace(\"flascc\"),\"ESP\")",
+                "swap",
+                "setproperty QName(PackageNamespace(\"flascc\"),\"ESP\")",
+                "getlex QName(PackageInternalNs(\"module\"),\"l\")",
+                "getproperty QName(PackageNamespace(\"\"),\"retval\")",
+                "findproperty QName(PackageNamespace(\"flascc\"),\"eax\")",
+                "swap",
+                "setproperty QName(PackageNamespace(\"flascc\"),\"eax\")",
+                "getlex QName(PackageInternalNs(\"module\"),\"l\")",
+                "getproperty QName(PackageNamespace(\"\"),\"sjid\")",
+                "convert_i",
+                "setlocal 17",
+                "popscope",
+                "ofs03a4:",
+                "jump ofs004c",
+                "try from ofs004d to ofs0355 target ofs0356 type QName(PackageNamespace(\"flascc\"),\"LongJmp\") name QName(PackageInternalNs(\"module\"),\"l\") end"
+        }) + "\n";
+        String res = decompilePCodeSource(pCode, true);
+        int start = res.indexOf("catch(l:LongJmp)");
+        assertTrue(start >= 0, res);
+        int open = res.indexOf("{", start);
+        int depth = 0;
+        int end = open;
+        for (; end < res.length(); end++) {
+            if (res.charAt(end) == '{') {
+                depth++;
+            } else if (res.charAt(end) == '}') {
+                depth--;
+                if (depth == 0) {
+                    break;
+                }
+            }
+        }
+        String catchBody = res.substring(open, end);
+        assertTrue(catchBody.contains("throw l;"), res);
+        assertTrue(catchBody.contains("l.sjid"), res);
+        assertTrue(!res.substring(end).contains("l."), res);
+        assertTrue(!res.substring(end).contains("throw l"), res);
+    }
 }
