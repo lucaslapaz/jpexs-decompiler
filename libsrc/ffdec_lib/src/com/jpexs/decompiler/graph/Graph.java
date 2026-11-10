@@ -4478,11 +4478,11 @@ public class Graph {
                     visited.add(part);
                     partCodes.put(part, ret);
                     partCodePos.put(part, ret.size());
-                    //the outer block will jump here, and by then this list may be a copy
+                    //the outer block will jump here, and by then this list may be a copy: the
+                    //goto anchors its label to the command that follows it (restoreLostLabels)
                     if (labelStopPart) {
                         makeAllCommands(ret, stack);
                         partCodePos.put(part, ret.size());
-                        ret.add(new LabelItem(dialect, null, localData.lineStartInstruction, "addr" + Helper.formatAddress(code.pos2adr(part.start, true))));
                     }
                 }
             }
