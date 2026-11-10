@@ -2753,6 +2753,29 @@ public class Graph {
     }
 
     /**
+     * Whether the commands have the label, also inside their blocks.
+     *
+     * @param list Commands
+     * @param labelName Label name
+     * @return True when the label is there
+     */
+    private boolean hasLabel(List<GraphTargetItem> list, String labelName) {
+        for (GraphTargetItem item : list) {
+            if ((item instanceof LabelItem) && labelName.equals(((LabelItem) item).labelName)) {
+                return true;
+            }
+            if (item instanceof Block) {
+                for (List<GraphTargetItem> sub : ((Block) item).getSubs()) {
+                    if (hasLabel(sub, labelName)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * Whether the item is a label or has one inside.
      *
      * @param item Item
@@ -4433,13 +4456,9 @@ public class Graph {
                         }
                     }
 
-                    boolean labelFound = false;
-                    for (GraphTargetItem item : firstCode) {
-                        if ((item instanceof LabelItem) && labelName.equals(((LabelItem) item).labelName)) {
-                            labelFound = true;
-                            break;
-                        }
-                    }
+                    //the label may have gone into a block with the code after it (processIfs moves
+                    //the commands of a branch): a second label would go where the code was
+                    boolean labelFound = hasLabel(firstCode, labelName);
                     if (labelFound) {
                         //written when the code was moved into a loop
                     } else if (firstCode.size() > firstCodePos && (firstCode.get(firstCodePos) instanceof LabelItem)) {
