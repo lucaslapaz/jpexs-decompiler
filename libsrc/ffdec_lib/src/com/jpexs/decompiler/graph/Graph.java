@@ -4043,6 +4043,7 @@ public class Graph {
                 System.err.println("stopParts: " + pathToString(stopPart));
             }
 
+            boolean labelStopPart = false;
             if (stopPart.contains(part)) {
 
                 boolean isRealStopPart = false;
@@ -4088,6 +4089,7 @@ public class Graph {
                         }
                     }
                 }
+                labelStopPart = leavesLoop && !visited.contains(part);
                 if (isRealStopPart && !leavesLoop) {
                     if (currentLoop != null) {
                         currentLoop.phase = 0;
@@ -4127,7 +4129,16 @@ public class Graph {
                         ((GraphPartMarkedArrayList<GraphTargetItem>) firstCode).startPart(part);
                     }
 
-                    if (firstCode.size() > firstCodePos && (firstCode.get(firstCodePos) instanceof LabelItem)) {
+                    boolean labelFound = false;
+                    for (GraphTargetItem item : firstCode) {
+                        if ((item instanceof LabelItem) && labelName.equals(((LabelItem) item).labelName)) {
+                            labelFound = true;
+                            break;
+                        }
+                    }
+                    if (labelFound) {
+                        //written when the code was moved into a loop
+                    } else if (firstCode.size() > firstCodePos && (firstCode.get(firstCodePos) instanceof LabelItem)) {
                         labelName = ((LabelItem) firstCode.get(firstCodePos)).labelName;
                     } else {
                         firstCode.add(firstCodePos, new LabelItem(dialect, null, localData.lineStartInstruction, labelName));
@@ -4139,6 +4150,12 @@ public class Graph {
                     visited.add(part);
                     partCodes.put(part, ret);
                     partCodePos.put(part, ret.size());
+                    //the outer block will jump here, and by then this list may be a copy
+                    if (labelStopPart) {
+                        makeAllCommands(ret, stack);
+                        partCodePos.put(part, ret.size());
+                        ret.add(new LabelItem(dialect, null, localData.lineStartInstruction, "addr" + Helper.formatAddress(code.pos2adr(part.start, true))));
+                    }
                 }
             }
             currentRet = ret;
