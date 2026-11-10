@@ -3954,7 +3954,30 @@ public class Graph {
      * @return List of GraphTargetItems
      * @throws InterruptedException On interrupt
      */
+    /**
+     * Loops that the walk opened again after handling them (see the block loops
+     * in printGraphFrame), for each printGraph call.
+     */
+    private final Deque<List<Loop>> reopenedLoops = new ArrayDeque<>();
+
     protected final List<GraphTargetItem> printGraph(Reference<Boolean> hasEmptyStackPops, List<GotoItem> foundGotos, Map<GraphPart, List<GraphTargetItem>> partCodes, Map<GraphPart, Integer> partCodePos, Set<GraphPart> visited, BaseLocalData localData, TranslateStack stack, Set<GraphPart> allParts, GraphPart parent, GraphPart part, List<GraphPart> stopPart, List<StopPartKind> stopPartKind, List<Loop> loops, List<ThrowState> throwStates, List<GraphTargetItem> ret, int staticOperation, String path, int recursionLevel) throws InterruptedException {
+        List<Loop> reopened = new ArrayList<>();
+        reopenedLoops.push(reopened);
+        try {
+            return printGraphFrame(hasEmptyStackPops, foundGotos, partCodes, partCodePos, visited, localData, stack, allParts, parent, part, stopPart, stopPartKind, loops, throwStates, ret, staticOperation, path, recursionLevel);
+        } finally {
+            reopenedLoops.pop();
+            //the walk of the loop is over: it is no longer open (a break to it would
+            //stand in place of the code that follows it)
+            for (Loop l : reopened) {
+                if (l.phase == 1) {
+                    l.phase = 2;
+                }
+            }
+        }
+    }
+
+    private List<GraphTargetItem> printGraphFrame(Reference<Boolean> hasEmptyStackPops, List<GotoItem> foundGotos, Map<GraphPart, List<GraphTargetItem>> partCodes, Map<GraphPart, Integer> partCodePos, Set<GraphPart> visited, BaseLocalData localData, TranslateStack stack, Set<GraphPart> allParts, GraphPart parent, GraphPart part, List<GraphPart> stopPart, List<StopPartKind> stopPartKind, List<Loop> loops, List<ThrowState> throwStates, List<GraphTargetItem> ret, int staticOperation, String path, int recursionLevel) throws InterruptedException {
 
         if (ret == null) {
             ret = new GraphPartMarkedArrayList<>();
@@ -4665,6 +4688,8 @@ public class Graph {
                                                         //handleLoop(hasEmptyStackPops, loopItem, li, currentLoop, loopTypeFound, doWhileCandidate, precontinueCommands, foundGotos, partCodes, partCodePos, visited, localData, allParts, null /*??*/, stopPart, stopPartKind, loops, throwStates, ret, staticOperation, path, recursionLevel, sPreLoop);
                                                         handleLoop(hasEmptyStackPops, new LoopLocalData(null, isLoop, loopItem, li, currentLoop, loopTypeFound, doWhileCandidate, precontinueCommands, stopPart, stopPartKind, ret, sPreLoop), foundGotos, partCodes, partCodePos, visited, localData, allParts, loops, throwStates, staticOperation, path, recursionLevel);
                                                         currentLoop.phase = 1;
+                                                        //the code of the block and the code after it are still inside it
+                                                        reopenedLoops.peek().add(currentLoop);
                                                     }
                                                     loopItem = newLoopItem;
                                                     li = loopItem;
