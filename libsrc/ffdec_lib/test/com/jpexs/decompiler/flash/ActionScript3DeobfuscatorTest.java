@@ -2035,4 +2035,16 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         });
         assertTrue(limited.contains("iffalse"), limited);
     }
+
+    @Test
+    public void testSignExtendInstructionName() throws Exception {
+        //sxi1, sxi8 and sxi16 were written as si1, si8 and si16, the names of the store
+        //instructions (si8(value, address))
+        decompilePCode("getlocal1\nsxi8\nsetlocal2\n"
+                + "getlocal1\nsxi16\nsetlocal2\n"
+                + "getlocal1\nsxi1\nsetlocal2\n",
+                "         var _loc2_:int = sxi8(param1);\n"
+                + "         _loc2_ = sxi16(param1);\n"
+                + "         _loc2_ = sxi1(param1);\n");
+    }
 }
