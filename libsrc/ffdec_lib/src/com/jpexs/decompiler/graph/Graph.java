@@ -1188,6 +1188,9 @@ public class Graph {
         List<GotoItem> gotos = new ArrayList<>();
         labelAnchors.clear();
         labelsWithCode.clear();
+        stopPartsInLoop.clear();
+        stopPartsWrittenOutside.clear();
+        gotoStopParts.clear();
 
         Reference<Boolean> hasEmptyStackPops = new Reference<>(false);
         Map<GraphPart, List<GraphTargetItem>> partCodes = new HashMap<>();
@@ -1197,6 +1200,7 @@ public class Graph {
         if (localData.secondPassData == null) {
             SecondPassData secondPassData = prepareSecondPass(localData, loops, throwStates, ret);
             if (secondPassData != null) {
+                secondPassData.stopPartsWrittenOutside.addAll(stopPartsWrittenOutside);
                 throw new SecondPassException(secondPassData, ret);
             }
         }
@@ -3977,6 +3981,23 @@ public class Graph {
     private final Set<LabelItem> labelsWithCode = Collections.newSetFromMap(new IdentityHashMap<>());
 
     /**
+     * Outer stop parts whose code was written inside a loop (the loop leaves
+     * to them).
+     */
+    private final Set<GraphPart> stopPartsInLoop = new HashSet<>();
+
+    /**
+     * Of those, the ones that another path reached afterwards: the outer
+     * block writes them (see SecondPassData.stopPartsWrittenOutside).
+     */
+    private final Set<Integer> stopPartsWrittenOutside = new HashSet<>();
+
+    /**
+     * Outer stop parts that a loop jumps to with a goto, in the second pass.
+     */
+    private final Set<GraphPart> gotoStopParts = new HashSet<>();
+
+    /**
      * Writes again the goto labels that are missing in the result: the label was
      * added to a list that the loop handling had copied already, and the goto had
      * no label. The label goes before the command that followed it.
@@ -4463,6 +4484,15 @@ public class Graph {
                     }
                 }
                 labelStopPart = leavesLoop && !visited.contains(part);
+                //the first pass found that the outer block writes this part after the loop: the
+                //loop jumps there (its code inside the loop would be followed by other code)
+                if (labelStopPart && localData.secondPassData != null && localData.secondPassData.stopPartsWrittenOutside.contains(part.start)) {
+                    makeAllCommands(ret, stack);
+                    gotoStopParts.add(part);
+                    ret.add(new GotoItem(dialect, null, localData.lineStartInstruction, "addr" + Helper.formatAddress(code.pos2adr(part.start, true))));
+                    localData.gotosUsed.setVal(true);
+                    break loopPrintGraph;
+                }
                 if (isRealStopPart && !leavesLoop) {
                     if (currentLoop != null) {
                         currentLoop.phase = 0;
@@ -4487,6 +4517,9 @@ public class Graph {
             if (vCanHandleVisited) {
                 if (visited.contains(part)) {
                     String labelName = "addr" + Helper.formatAddress(code.pos2adr(part.start, true)); // + "_ip" + part.start;
+                    if (stopPartsInLoop.contains(part)) {
+                        stopPartsWrittenOutside.add(part.start);
+                    }
                     List<GraphTargetItem> firstCode = partCodes.get(part);
                     int firstCodePos = partCodePos.get(part);
                     if (firstCodePos > firstCode.size()) {
@@ -4536,6 +4569,9 @@ public class Graph {
                     //the outer block will jump here, and by then this list may be a copy or the
                     //code may have moved: the label goes with the code
                     if (labelStopPart) {
+                        stopPartsInLoop.add(part);
+                    }
+                    if (labelStopPart || gotoStopParts.contains(part)) {
                         makeAllCommands(ret, stack);
                         partCodePos.put(part, ret.size());
                         LabelItem stopPartLabel = new LabelItem(dialect, null, localData.lineStartInstruction, "addr" + Helper.formatAddress(code.pos2adr(part.start, true)));
