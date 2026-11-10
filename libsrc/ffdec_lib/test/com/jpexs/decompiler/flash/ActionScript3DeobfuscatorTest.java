@@ -6135,6 +6135,8 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         }) + "\n";
         String res = decompilePCodeSource(pCode, true);
         assertJumpsHaveTargets(res);
+        //the label stays with the code of the part, which went into the if
+        assertTrue(java.util.regex.Pattern.compile("addr0121:\\s*_loc3_ = 39;").matcher(res).find(), res);
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?m)^\\s*(addr[0-9a-f]+):").matcher(res);
         java.util.Set<String> labels = new java.util.HashSet<>();
         while (m.find()) {

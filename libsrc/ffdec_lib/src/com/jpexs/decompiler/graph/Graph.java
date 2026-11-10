@@ -64,6 +64,7 @@ import java.util.BitSet;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -1186,6 +1187,7 @@ public class Graph {
          System.err.println("</loopspre>");//*/
         List<GotoItem> gotos = new ArrayList<>();
         labelAnchors.clear();
+        labelsWithCode.clear();
 
         Reference<Boolean> hasEmptyStackPops = new Reference<>(false);
         Map<GraphPart, List<GraphTargetItem>> partCodes = new HashMap<>();
@@ -3969,6 +3971,12 @@ public class Graph {
     private final Map<GraphTargetItem, String> labelAnchors = new IdentityHashMap<>();
 
     /**
+     * The labels written with the code of a part (the stop part written inside
+     * a loop), which go wherever the code goes.
+     */
+    private final Set<LabelItem> labelsWithCode = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    /**
      * Writes again the goto labels that are missing in the result: the label was
      * added to a list that the loop handling had copied already, and the goto had
      * no label. The label goes before the command that followed it.
@@ -3976,6 +3984,7 @@ public class Graph {
      * @param list Result
      */
     private void restoreLostLabels(List<GraphTargetItem> list) {
+        removeLabelsAwayFromCode(list);
         if (labelAnchors.isEmpty()) {
             return;
         }
@@ -4099,6 +4108,52 @@ public class Graph {
             if (item instanceof Block) {
                 for (List<GraphTargetItem> sub : ((Block) item).getSubs()) {
                     findFirstCommandOfPart(sub, part, found, foundIp);
+                }
+            }
+        }
+    }
+
+    /**
+     * A goto to a part whose code got a label when it was written (see
+     * labelsWithCode) may have written another one where the code was first
+     * written, and the code may have moved since: the label written with the
+     * code is the one that stays.
+     *
+     * @param list Result
+     */
+    private void removeLabelsAwayFromCode(List<GraphTargetItem> list) {
+        if (labelsWithCode.isEmpty()) {
+            return;
+        }
+        Set<String> withCode = new HashSet<>();
+        collectLabelsWithCode(list, withCode);
+        removeOtherLabels(list, withCode);
+    }
+
+    private void collectLabelsWithCode(List<GraphTargetItem> list, Set<String> withCode) {
+        for (GraphTargetItem item : list) {
+            if ((item instanceof LabelItem) && labelsWithCode.contains((LabelItem) item)) {
+                withCode.add(((LabelItem) item).labelName);
+            }
+            if (item instanceof Block) {
+                for (List<GraphTargetItem> sub : ((Block) item).getSubs()) {
+                    collectLabelsWithCode(sub, withCode);
+                }
+            }
+        }
+    }
+
+    private void removeOtherLabels(List<GraphTargetItem> list, Set<String> withCode) {
+        for (int i = 0; i < list.size(); i++) {
+            GraphTargetItem item = list.get(i);
+            if ((item instanceof LabelItem) && withCode.contains(((LabelItem) item).labelName) && !labelsWithCode.contains((LabelItem) item)) {
+                list.remove(i);
+                i--;
+                continue;
+            }
+            if (item instanceof Block) {
+                for (List<GraphTargetItem> sub : ((Block) item).getSubs()) {
+                    removeOtherLabels(sub, withCode);
                 }
             }
         }
@@ -4478,11 +4533,14 @@ public class Graph {
                     visited.add(part);
                     partCodes.put(part, ret);
                     partCodePos.put(part, ret.size());
-                    //the outer block will jump here, and by then this list may be a copy: the
-                    //goto anchors its label to the command that follows it (restoreLostLabels)
+                    //the outer block will jump here, and by then this list may be a copy or the
+                    //code may have moved: the label goes with the code
                     if (labelStopPart) {
                         makeAllCommands(ret, stack);
                         partCodePos.put(part, ret.size());
+                        LabelItem stopPartLabel = new LabelItem(dialect, null, localData.lineStartInstruction, "addr" + Helper.formatAddress(code.pos2adr(part.start, true)));
+                        labelsWithCode.add(stopPartLabel);
+                        ret.add(stopPartLabel);
                     }
                 }
             }
