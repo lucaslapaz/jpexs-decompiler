@@ -5177,4 +5177,33 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         assertTrue(!res.substring(end).contains("l."), res);
         assertTrue(!res.substring(end).contains("throw l"), res);
     }
+
+    @Test
+    public void testEmptySwitchCaseBeforeDefaultHasBreak() throws Exception {
+        //a case that goes straight to the end of the switch had no commands and no break,
+        //and fell through to the default (FlasCC writes the return of a longjmp as
+        //switch (id - 1) { case 0: goto back; default: throw "bad longjmp"; })
+        String pCode = String.join("\n", new String[]{
+                "pushbyte 1",
+                "setlocal 3",
+                "getlocal1",
+                "iftrue sw",
+                "pushbyte 3",
+                "setlocal 3",
+                "jump after",
+                "sw:",
+                "getlocal1",
+                "lookupswitch dflt, [after]",
+                "dflt:",
+                "pushbyte 23",
+                "setlocal 3",
+                "getlocal1",
+                "throw",
+                "after:",
+                "pushbyte 4",
+                "setlocal 3"
+        }) + "\n";
+        String res = decompilePCodeSource(pCode, true);
+        assertTrue(java.util.regex.Pattern.compile("case 0:\\s*break;\\s*default:").matcher(res).find(), res);
+    }
 }

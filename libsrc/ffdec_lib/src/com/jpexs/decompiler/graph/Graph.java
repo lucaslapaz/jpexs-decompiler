@@ -6051,6 +6051,10 @@ public class Graph {
                     if (!(last instanceof ContinueItem) && !(last instanceof BreakItem) && !(last instanceof GotoItem) && !(last instanceof ExitItem) && !(last instanceof ScriptEndItem)) {
                         currentCaseCommands.add(new BreakItem(dialect, null, localData.lineStartInstruction, currentLoop.id));
                     }
+                } else {
+                    //the case goes straight to the end of the switch: without the break
+                    //it would fall through to the next case
+                    currentCaseCommands.add(new BreakItem(dialect, null, localData.lineStartInstruction, currentLoop.id));
                 }
             }
             subStack.finishBlock(currentCaseCommands, true);
