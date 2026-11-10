@@ -3778,6 +3778,29 @@ public class Graph {
      * @param result Result
      * @param loopId Loop id
      */
+    /**
+     * Inserts a copy of the commands before each continue of the loop.
+     *
+     * @param commands Commands
+     * @param loopId Loop id
+     * @param toInsert Commands to insert
+     */
+    private void insertBeforeContinuesOfLoop(List<GraphTargetItem> commands, long loopId, List<GraphTargetItem> toInsert) {
+        for (int i = 0; i < commands.size(); i++) {
+            GraphTargetItem ti = commands.get(i);
+            if (ti instanceof ContinueItem && ((ContinueItem) ti).loopId == loopId) {
+                for (int j = 0; j < toInsert.size(); j++) {
+                    commands.add(i + j, toInsert.get(j).clone());
+                }
+                i += toInsert.size();
+            } else if (ti instanceof Block) {
+                for (List<GraphTargetItem> sub : ((Block) ti).getSubs()) {
+                    insertBeforeContinuesOfLoop(sub, loopId, toInsert);
+                }
+            }
+        }
+    }
+
     private void getContinuesCommands(List<GraphTargetItem> commands, List<List<GraphTargetItem>> result, long loopId) {
         for (GraphTargetItem ti : commands) {
             if (ti instanceof ContinueItem) {
@@ -5384,6 +5407,9 @@ public class Graph {
         }
 
         if (!loopLocalData.loopTypeFound && !loopLocalData.precontinueCommands.isEmpty()) {
+            //a continue of the loop goes to the precontinue, which is written at the end of the
+            //body: the continue would skip it (an endless loop when it is the decrement)
+            insertBeforeContinuesOfLoop(loopLocalData.loopItem.commands, loopLocalData.currentLoop.id, loopLocalData.precontinueCommands);
             loopLocalData.loopItem.commands.addAll(loopLocalData.precontinueCommands);
         }
 
