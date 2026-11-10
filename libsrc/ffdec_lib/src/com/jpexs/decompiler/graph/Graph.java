@@ -2649,7 +2649,10 @@ public class Graph {
                 if (!ii.onTrue.isEmpty() && !ii.onFalse.isEmpty()) {
                     if (ii.onTrue.get(ii.onTrue.size() - 1) instanceof GotoItem) {
                         if (ii.onFalse.get(ii.onFalse.size() - 1) instanceof GotoItem) {
-                            for (int j = i + 1; j < list.size(); j++) {
+                            //the commands after the if are not reached from it, but a label
+                            //there is the target of a goto (processIfGotos2 moves the code of a
+                            //label after a goto): the code from the label on stays
+                            while (i + 1 < list.size() && !containsLabel(list.get(i + 1))) {
                                 list.remove(i + 1);
                             }
                         }
@@ -2700,6 +2703,28 @@ public class Graph {
                 }
             }
         }
+    }
+
+    /**
+     * Whether the item is a label or has one inside.
+     *
+     * @param item Item
+     * @return True when it has a label
+     */
+    private boolean containsLabel(GraphTargetItem item) {
+        if (item instanceof LabelItem) {
+            return true;
+        }
+        if (item instanceof Block) {
+            for (List<GraphTargetItem> sub : ((Block) item).getSubs()) {
+                for (GraphTargetItem subItem : sub) {
+                    if (containsLabel(subItem)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private void processScriptEnd(List<GraphTargetItem> ret) {
