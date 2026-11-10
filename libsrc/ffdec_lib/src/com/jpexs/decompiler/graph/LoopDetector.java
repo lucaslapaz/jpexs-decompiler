@@ -592,6 +592,16 @@ public class LoopDetector {
             Set<GraphPart> excludedTargets = new LinkedHashSet<>(classifiedAbruptTargets);
             excludedTargets.addAll(exceptionTargets);
 
+            //The code of a catch inside the loop is written in the catch, not after the
+            //loop: the catch variable is known only there
+            Set<GraphPart> innerCatchParts = new LinkedHashSet<>();
+            for (ThrowState ts : throwStates) {
+                if (!ts.catchParts.contains(loop.loopContinue)) {
+                    innerCatchParts.addAll(ts.catchParts);
+                }
+            }
+            excludedTargets.addAll(innerCatchParts);
+
             Set<GraphPart> localOutParts = new LinkedHashSet<>(outParts);
             localOutParts.removeAll(excludedTargets);
 
@@ -632,6 +642,7 @@ public class LoopDetector {
             }
 
             allOutReachable.removeAll(exceptionTargets);
+            allOutReachable.removeAll(innerCatchParts);
 
             if (allOutReachable.isEmpty()) {
                 continue;

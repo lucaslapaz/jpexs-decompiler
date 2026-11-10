@@ -150,6 +150,13 @@ public class GraphPrecontinueDetector {
                 if (targetParts.contains(node.graphPart)) {
                     inTryTarget = true;
                 }
+                //a part of a catch inside the loop is written in the catch, the
+                //precontinue goes after it, out of the catch
+                for (ThrowState ts : throwStates) {
+                    if (ts.catchParts.contains(node.graphPart) && !ts.catchParts.contains(el.loopContinue)) {
+                        inTryTarget = true;
+                    }
+                }
                 if (!inTryTarget && !hasMoreNexts) {
                     while (node.parentNode != null) {
                         node = node.parentNode;
