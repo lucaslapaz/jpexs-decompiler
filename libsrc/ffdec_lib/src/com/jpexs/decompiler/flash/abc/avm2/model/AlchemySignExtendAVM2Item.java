@@ -53,7 +53,7 @@ public class AlchemySignExtendAVM2Item extends AVM2Item {
 
     @Override
     public GraphTextWriter appendTo(GraphTextWriter writer, LocalData localData) throws InterruptedException {
-        writer.append("si").append(size).append("(");
+        writer.append("sxi").append(size).append("(");
         value.toString(writer, localData);
         return writer.append(")");
     }
