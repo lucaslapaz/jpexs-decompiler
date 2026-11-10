@@ -1188,7 +1188,9 @@ public class Graph {
         labelAnchors.clear();
 
         Reference<Boolean> hasEmptyStackPops = new Reference<>(false);
-        List<GraphTargetItem> ret = printGraph(hasEmptyStackPops, gotos, new HashMap<>(), new HashMap<>(), new HashSet<>(), localData, stack, allParts, null, heads.get(0), null, null, loops, throwStates, staticOperation, path);
+        Map<GraphPart, List<GraphTargetItem>> partCodes = new HashMap<>();
+        Map<GraphPart, Integer> partCodePos = new HashMap<>();
+        List<GraphTargetItem> ret = printGraph(hasEmptyStackPops, gotos, partCodes, partCodePos, new HashSet<>(), localData, stack, allParts, null, heads.get(0), null, null, loops, throwStates, staticOperation, path);
 
         if (localData.secondPassData == null) {
             SecondPassData secondPassData = prepareSecondPass(localData, loops, throwStates, ret);
@@ -1200,6 +1202,7 @@ public class Graph {
         processIfGotos2(new ArrayList<>(), gotos, ret, ret);
         processIfGotos(gotos, ret, ret);
         processScriptEnd(ret);
+        fixJumpsToLoopsNotInResult(ret, loops, partCodes, partCodePos);
         restoreLostLabels(ret);
 
         Map<String, Integer> usages = new HashMap<>();
@@ -3861,6 +3864,86 @@ public class Graph {
         Set<String> present = new HashSet<>();
         collectLabels(list, present);
         insertLostLabels(list, present);
+    }
+
+    /**
+     * A break or continue to a loop that does not enclose it in the result (the
+     * loop was not written there, or not at all) becomes a goto to the code of the
+     * part it jumps to, when that code was written: before, it was a break to a
+     * label that does not exist.
+     *
+     * @param list Result
+     * @param loops Loops
+     * @param partCodes Lists where each part was written
+     * @param partCodePos Position of each part in its list
+     */
+    private void fixJumpsToLoopsNotInResult(List<GraphTargetItem> list, List<Loop> loops, Map<GraphPart, List<GraphTargetItem>> partCodes, Map<GraphPart, Integer> partCodePos) {
+        Map<Long, Loop> byId = new HashMap<>();
+        for (Loop l : loops) {
+            byId.put(l.id, l);
+        }
+        fixJumpsToLoopsNotInResult(list, new HashSet<>(), byId, partCodes, partCodePos);
+    }
+
+    private void fixJumpsToLoopsNotInResult(List<GraphTargetItem> list, Set<Long> enclosing, Map<Long, Loop> loops, Map<GraphPart, List<GraphTargetItem>> partCodes, Map<GraphPart, Integer> partCodePos) {
+        for (int i = 0; i < list.size(); i++) {
+            GraphTargetItem item = list.get(i);
+            long loopId = -1;
+            boolean isBreak = false;
+            if (item instanceof BreakItem) {
+                loopId = ((BreakItem) item).loopId;
+                isBreak = true;
+            } else if (item instanceof ContinueItem) {
+                loopId = ((ContinueItem) item).loopId;
+            }
+            if (loopId != -1 && !enclosing.contains(loopId) && loops.containsKey(loopId)) {
+                Loop l = loops.get(loopId);
+                GraphPart target = isBreak ? l.loopBreak : (l.loopPreContinue != null ? l.loopPreContinue : l.loopContinue);
+                String labelName = labelOfPart(target, partCodes, partCodePos);
+                if (labelName != null) {
+                    list.set(i, new GotoItem(dialect, null, item.getLineStartItem(), labelName));
+                }
+                continue;
+            }
+            if (item instanceof Block) {
+                Set<Long> inner = enclosing;
+                if (item instanceof LoopItem && ((LoopItem) item).loop != null) {
+                    inner = new HashSet<>(enclosing);
+                    inner.add(((LoopItem) item).loop.id);
+                }
+                for (List<GraphTargetItem> sub : ((Block) item).getSubs()) {
+                    fixJumpsToLoopsNotInResult(sub, inner, loops, partCodes, partCodePos);
+                }
+            }
+        }
+    }
+
+    /**
+     * The label of the code of a part, for a goto to it: the label already there,
+     * or a new one, written before the first command of the part (see
+     * restoreLostLabels). Null when the part was not written.
+     *
+     * @param part Part
+     * @param partCodes Lists where each part was written
+     * @param partCodePos Position of each part in its list
+     * @return Label name or null
+     */
+    private String labelOfPart(GraphPart part, Map<GraphPart, List<GraphTargetItem>> partCodes, Map<GraphPart, Integer> partCodePos) {
+        if (part == null || !partCodes.containsKey(part) || !partCodePos.containsKey(part)) {
+            return null;
+        }
+        List<GraphTargetItem> code = partCodes.get(part);
+        int pos = partCodePos.get(part);
+        if (pos >= code.size()) {
+            return null;
+        }
+        GraphTargetItem first = code.get(pos);
+        if (first instanceof LabelItem) {
+            return ((LabelItem) first).labelName;
+        }
+        String labelName = "addr" + Helper.formatAddress(this.code.pos2adr(part.start, true));
+        labelAnchors.put(first, labelName);
+        return labelName;
     }
 
     private void collectLabels(List<GraphTargetItem> list, Set<String> present) {

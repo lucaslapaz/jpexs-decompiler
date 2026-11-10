@@ -2375,4 +2375,158 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         assertTrue(res.trim().endsWith("_loc3_ = 48;"), res);
         assertTrue(!res.contains("break loop1"), res);
     }
+
+    /**
+     * Every break or continue to a loop label has the label, and every goto has its label.
+     */
+    private void assertJumpsHaveTargets(String res) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?:break|continue) (loop[0-9]+);").matcher(res);
+        while (m.find()) {
+            assertTrue(res.contains(m.group(1) + ":"), res);
+        }
+        m = java.util.regex.Pattern.compile("§§goto\\((addr[0-9a-f]+)\\)").matcher(res);
+        while (m.find()) {
+            assertTrue(res.contains(m.group(1) + ":"), res);
+        }
+    }
+
+    @Test
+    public void testBreakToLoopNotInResultBecomesGoto() throws Exception {
+        //a break to a loop that does not enclose it in the result (the loop was not
+        //written there) had no label: it becomes a goto to the code at the break of
+        //the loop. The control flow of a function compiled by FlasCC, with each block
+        //replaced by a mark
+        String pCode = String.join("\n", new String[]{
+                "pushbyte 1",
+                "setlocal 3",
+                "jump ofs03a4",
+                "ofs004c:",
+                "ofs004d:",
+                "pushbyte 2",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 1",
+                "ifne ofs0338",
+                "pushbyte 3",
+                "setlocal 3",
+                "ofs00c8:",
+                "pushbyte 4",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 2",
+                "ifne ofs0322",
+                "pushbyte 5",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 3",
+                "ifeq ofs02f0",
+                "pushbyte 6",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 4",
+                "ifeq ofs0228",
+                "pushbyte 7",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 5",
+                "iflt ofs015d",
+                "pushbyte 8",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 6",
+                "ifle ofs015d",
+                "pushbyte 9",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 7",
+                "ifne ofs0228",
+                "ofs015d:",
+                "pushbyte 10",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 8",
+                "ifeq ofs01d4",
+                "pushbyte 11",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 9",
+                "iflt ofs01d4",
+                "pushbyte 12",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 10",
+                "ifle ofs01d4",
+                "pushbyte 13",
+                "setlocal 3",
+                "jump ofs0228",
+                "ofs01d4:",
+                "pushbyte 14",
+                "setlocal 3",
+                "ofs01f5:",
+                "pushbyte 15",
+                "setlocal 3",
+                "ofs0228:",
+                "pushbyte 16",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 11",
+                "ifne ofs02f0",
+                "pushbyte 17",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 12",
+                "ifeq ofs02f0",
+                "pushbyte 18",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 13",
+                "ifne ofs02f0",
+                "pushbyte 19",
+                "setlocal 3",
+                "ofs02f0:",
+                "pushbyte 20",
+                "setlocal 3",
+                "returnvoid",
+                "ofs0322:",
+                "pushbyte 21",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 14",
+                "ifeq ofs01f5",
+                "ofs0333:",
+                "jump ofs0333",
+                "ofs0338:",
+                "pushbyte 22",
+                "setlocal 3",
+                "getlocal1",
+                "lookupswitch ofs0347, [ofs034b]",
+                "ofs0347:",
+                "jump ofs034f",
+                "ofs034b:",
+                "jump ofs00c8",
+                "ofs034f:",
+                "pushbyte 23",
+                "setlocal 3",
+                "getlocal1",
+                "throw",
+                "ofs0355:",
+                "ofs0356:",
+                "pushbyte 24",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 15",
+                "ifnge ofs0376",
+                "pushbyte 25",
+                "setlocal 3",
+                "getlocal1",
+                "throw",
+                "ofs0376:",
+                "pushbyte 26",
+                "setlocal 3",
+                "ofs03a4:",
+                "jump ofs004c"
+        }) + "\n";
+        String res = decompilePCodeSource(pCode, true);
+        assertJumpsHaveTargets(res);
+    }
 }
