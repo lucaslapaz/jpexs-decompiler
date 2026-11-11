@@ -6853,4 +6853,22 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?m)^(\\s*)(?:continue|return|break)[^;\\n]*;\\n\\1(?!\\}|addr|loop|case |default:|§§goto)\\S.*$").matcher(res);
         assertTrue(!m.find(), "code after a jump: " + (m.find(0) ? m.group() : "") + " in " + res);
     }
+
+    @Test
+    public void testSetSlotOfActivationWithoutTrait() throws Exception {
+        //a setslot on the activation object with a slot id that has no trait in the method body
+        //has no name, and looking for its declaration threw a NullPointerException
+        //(code written by a compiler that is not the one of Flash or Flex)
+        String pCode = String.join("\n", new String[]{
+                "newactivation",
+                "dup",
+                "setlocal 4",
+                "pushscope",
+                "getlocal 4",
+                "pushbyte 5",
+                "setslot 3"
+        }) + "\n";
+        String res = decompilePCodeSource(pCode, true);
+        assertTrue(res.contains("slot[3] = 5;"), res);
+    }
 }

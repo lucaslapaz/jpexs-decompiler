@@ -2576,7 +2576,8 @@ public class AVM2Code implements Cloneable {
                 }
                 if (subItem instanceof SetSlotAVM2Item) {
                     SetSlotAVM2Item ssti = (SetSlotAVM2Item) subItem;
-                    if (ssti.scope instanceof NewActivationAVM2Item) {
+                    //a slot without a trait has no name to declare
+                    if (ssti.scope instanceof NewActivationAVM2Item && ssti.slotName != null) {
                         Slot sl = new Slot(ssti.scope, ssti.slotName);
                         String slotPropertyName = sl.multiname.getName(usedDeobfuscations, abc, abc.constants, new ArrayList<>(), true, false);
                         if (!paramNames.contains(slotPropertyName)) {
