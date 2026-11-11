@@ -2965,7 +2965,8 @@ public class Graph {
                         if (onFalse.isEmpty() && !onTrue.isEmpty() && (onTrue.get(onTrue.size() - 1) instanceof ContinueItem)) {
                             ifi.expression = ifi.expression.invert(null);
                             List<GraphTargetItem> onTrueItems = new ArrayList<>();
-                            for (int j = i; j < list.size(); j++) {
+                            //all the commands after the if (the size of the list changes while they are removed)
+                            while (list.size() > i + 1) {
                                 onTrueItems.add(list.remove(i + 1));
                             }
                             list.addAll(i + 1, ifi.onTrue);
