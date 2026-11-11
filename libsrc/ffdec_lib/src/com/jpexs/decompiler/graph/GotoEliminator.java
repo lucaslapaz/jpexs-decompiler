@@ -57,6 +57,9 @@ import java.util.Set;
  * <li>goto after a block which has the label: the code of the label is moved
  * after the goto, when it never continues with the code after it</li>
  * </ul>
+ * Code which is moved and reaches the end of its list gets the jump which
+ * does what that end does: the break of the block whose commands the list
+ * are, or the continue of the loop whose body it is.
  * The label inside a try or a catch seen from outside, or inside a loop which
  * its code continues (a loop with two entries), stays as goto.
  *
@@ -156,6 +159,7 @@ public class GotoEliminator {
         int i = pg.get(c).index;
         int j = pl.get(c).index;
         String labelName = g.labelName;
+        GraphTargetItem endJump = endJump(pg, c);
 
         if (pl.size() == c + 1) {
             //the label is in the common list
@@ -198,7 +202,7 @@ public class GotoEliminator {
             }
             //The goto after a loop without end, back to its body: the code
             //from the loop to the goto belongs to the loop
-            if (t == c && i > j && moveCodeToOnlyBreak(common, j, i)) {
+            if (t == c && i > j && moveCodeToOnlyBreak(common, j, i, endJump)) {
                 return true;
             }
             if (loopWithoutEndToBlock(pl.get(t).list, pl.get(t).index)) {
@@ -211,7 +215,7 @@ public class GotoEliminator {
                 return true;
             }
             if (t == c) {
-                return moveCodeIntoLoop(common, j, i, container, -1);
+                return moveCodeIntoLoop(common, j, i, container, -1, endJump);
             }
             //the loop is in blocks only: the code after the outermost block,
             //reached only from the loop, is part of the loop
@@ -220,7 +224,7 @@ public class GotoEliminator {
                     return false;
                 }
             }
-            return moveCodeToOnlyBreak(common, j, i) || moveCodeIntoLoop(common, j, i, container, ((LabeledBlockItem) common.get(j)).id);
+            return moveCodeToOnlyBreak(common, j, i, endJump) || moveCodeIntoLoop(common, j, i, container, ((LabeledBlockItem) common.get(j)).id, endJump);
         }
 
         //the label is in blocks only
@@ -243,7 +247,7 @@ public class GotoEliminator {
             //leave one of them, when a simple jump follows the block: the jump
             //is written in its place
             if (!resolveJumpsAfterBlocks(tail, pl, c, -1)) {
-                return moveCodeToOnlyBreak(common, j, i) || moveLabelWithCodeAfterBlocks(common, j, i, pl, c, labelName);
+                return moveCodeToOnlyBreak(common, j, i, endJump) || moveLabelWithCodeAfterBlocks(common, j, i, pl, c, labelName);
             }
             long targetId = nextId++;
             removeRange(labelList, last.index, labelList.size());
@@ -413,9 +417,11 @@ public class GotoEliminator {
      * @param item The loop
      * @param blockId Id of the block which has the loop, -1 when the loop is
      * in the list
+     * @param endJump The jump which does what the end of the list does (see
+     * {@link #endJump}), or null
      * @return True if moved
      */
-    private boolean moveCodeIntoLoop(List<GraphTargetItem> list, int index, int lastIndex, GraphTargetItem item, long blockId) {
+    private boolean moveCodeIntoLoop(List<GraphTargetItem> list, int index, int lastIndex, GraphTargetItem item, long blockId, GraphTargetItem endJump) {
         if (item.getClass() != WhileItem.class && item.getClass() != UniversalLoopItem.class) {
             return false;
         }
@@ -423,15 +429,12 @@ public class GotoEliminator {
         if (loop.loop == null || loop.commands == null) {
             return false;
         }
-        List<GraphTargetItem> code = slice(list, index + 1, lastIndex + 1);
-        if (canCompleteNormally(code)) {
-            //the code up to the goto continues: all the code to the end of the list
-            lastIndex = list.size() - 1;
-            code = slice(list, index + 1, lastIndex + 1);
-            if (canCompleteNormally(code)) {
-                return false;
-            }
+        int[] last = new int[1];
+        List<GraphTargetItem> code = codeAfter(list, index, lastIndex, endJump, last);
+        if (code == null) {
+            return false;
         }
+        lastIndex = last[0];
         long loopId = loop.loop.id;
         List<GraphTargetItem> body = new ArrayList<>();
         long capturedId = loopId;
@@ -737,9 +740,11 @@ public class GotoEliminator {
      * @param list List with the block
      * @param blockIndex Index of the block
      * @param lastIndex Index of the last command of the code after the block
+     * @param endJump The jump which does what the end of the list does (see
+     * {@link #endJump}), or null
      * @return True if moved
      */
-    private boolean moveCodeToOnlyBreak(List<GraphTargetItem> list, int blockIndex, int lastIndex) {
+    private boolean moveCodeToOnlyBreak(List<GraphTargetItem> list, int blockIndex, int lastIndex, GraphTargetItem endJump) {
         GraphTargetItem item = list.get(blockIndex);
         List<GraphTargetItem> commands;
         long id;
@@ -755,24 +760,82 @@ public class GotoEliminator {
         } else {
             return false;
         }
-        List<GraphTargetItem> code = slice(list, blockIndex + 1, lastIndex + 1);
-        if (canCompleteNormally(code)) {
-            //the code up to the goto continues: all the code to the end of the list
-            lastIndex = list.size() - 1;
-            code = slice(list, blockIndex + 1, lastIndex + 1);
-            if (canCompleteNormally(code)) {
-                return false;
-            }
-        }
         List<Step> sites = new ArrayList<>();
         if (!findBreakSites(commands, id, sites) || sites.size() != 1) {
             return false;
         }
+        int[] last = new int[1];
+        List<GraphTargetItem> code = codeAfter(list, blockIndex, lastIndex, endJump, last);
+        if (code == null) {
+            return false;
+        }
+        lastIndex = last[0];
         removeRange(list, blockIndex + 1, lastIndex + 1);
         Step site = sites.get(0);
         site.list.remove(site.index);
         insertAll(site.list, site.index, code);
         return true;
+    }
+
+    /**
+     * The code after a command, which is moved somewhere else: the commands up
+     * to the one with the goto, or, when these continue, all the commands to
+     * the end of the list. Code which reaches the end of the list gets the
+     * jump which does what the end does, so that it does not depend on its
+     * place any more.
+     *
+     * @param list List with the command
+     * @param index Index of the command
+     * @param lastIndex Index of the command with the goto
+     * @param endJump The jump which does what the end of the list does (see
+     * {@link #endJump}), or null
+     * @param last Gets the index of the last command of the code in the list
+     * @return The code, or null when it reaches the end of the list and there
+     * is no such jump
+     */
+    private List<GraphTargetItem> codeAfter(List<GraphTargetItem> list, int index, int lastIndex, GraphTargetItem endJump, int[] last) {
+        List<GraphTargetItem> code = slice(list, index + 1, lastIndex + 1);
+        last[0] = lastIndex;
+        if (!canCompleteNormally(code)) {
+            return code;
+        }
+        //the code up to the goto continues: all the code to the end of the list
+        last[0] = list.size() - 1;
+        code = slice(list, index + 1, list.size());
+        if (canCompleteNormally(code)) {
+            if (endJump == null) {
+                return null;
+            }
+            code.add(copyJump(endJump));
+        }
+        return code;
+    }
+
+    /**
+     * Gets the jump which does what the end of the list of the path step
+     * does: the break of the block whose commands it is, or the continue of
+     * the loop whose body it is.
+     *
+     * @param path Path
+     * @param step Index of the step in the path
+     * @return The jump, or null when the end of the list does something else
+     */
+    private GraphTargetItem endJump(List<Step> path, int step) {
+        if (step < 1) {
+            return null;
+        }
+        List<GraphTargetItem> list = path.get(step).list;
+        GraphTargetItem container = path.get(step - 1).item();
+        if ((container instanceof LabeledBlockItem) && ((LabeledBlockItem) container).commands == list) {
+            return new BreakItem(dialect, null, null, ((LabeledBlockItem) container).id);
+        }
+        if ((container instanceof LoopItem) && !(container instanceof SwitchItem)) {
+            LoopItem loopItem = (LoopItem) container;
+            if (loopItem.loop != null && loopItem.hasBaseBody() && loopItem.getBaseBodyCommands() == list) {
+                return new ContinueItem(dialect, null, null, loopItem.loop.id);
+            }
+        }
+        return null;
     }
 
     /**
