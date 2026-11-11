@@ -76,6 +76,8 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
     public void init() throws IOException, InterruptedException {
         //Main.initLogging(false);
         Configuration.autoDeobfuscate.set(true);
+        //the gotos and their labels are checked as they are written
+        Configuration.gotosAsLabeledBlocks.set(false);
         Configuration.decimalAddress.set(false);
         Configuration.decompilationTimeoutSingleMethod.set(Integer.MAX_VALUE);
         Configuration.padAs3PCodeInstructionName.set(false);
@@ -7745,5 +7747,204 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
                 + "                        _loc9_++;\n"
                 + "                     }\n"
                 + "                     param1.m = 12;\n"), "the inner loop is not a while with a break: " + res);
+    }
+
+    /**
+     * Decompiles p-code with the gotos written as breaks of blocks with a
+     * label (the other tests check the gotos as they are written).
+     */
+    private String decompilePCodeGotosAsBlocks(String pCode) throws Exception {
+        Configuration.gotosAsLabeledBlocks.set(true);
+        try {
+            return decompilePCodeSource(pCode, true);
+        } finally {
+            Configuration.gotosAsLabeledBlocks.set(false);
+        }
+    }
+
+    @Test
+    public void testGotoToCodeSharedByBranchesAsLabeledBlocks() throws Exception {
+        //two branches which are not siblings continue with the same code: it was written
+        //in the first one, with a goto to it in the other. The code goes after the ifs,
+        //and each branch leaves a block to reach it or to skip it
+        String pCode = String.join("\n", new String[]{
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"a\")",
+                "iffalse ofse",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"b\")",
+                "iffalse ofsx",
+                "ofst:",
+                "label",
+                "getlocal1",
+                "pushbyte 1",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "returnvoid",
+                "ofsx:",
+                "label",
+                "getlocal1",
+                "pushbyte 2",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "jump ofsend",
+                "ofse:",
+                "label",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"c\")",
+                "iftrue ofst",
+                "getlocal1",
+                "pushbyte 3",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "ofsend:",
+                "label",
+                "getlocal1",
+                "pushbyte 4",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")"
+        }) + "\n";
+        String res = decompilePCodeGotosAsBlocks(pCode);
+        assertEquals(res, "         loop4:\n"
+                + "         {\n"
+                + "            loop2:\n"
+                + "            {\n"
+                + "               loop5:\n"
+                + "               {\n"
+                + "                  loop3:\n"
+                + "                  {\n"
+                + "                     if(param1.a)\n"
+                + "                     {\n"
+                + "                        if(!param1.b)\n"
+                + "                        {\n"
+                + "                           param1.m = 2;\n"
+                + "                           break loop5;\n"
+                + "                        }\n"
+                + "                     }\n"
+                + "                     else\n"
+                + "                     {\n"
+                + "                        break loop3;\n"
+                + "                     }\n"
+                + "                     break loop4;\n"
+                + "                  }\n"
+                + "                  loop1:\n"
+                + "                  {\n"
+                + "                     if(!param1.c)\n"
+                + "                     {\n"
+                + "                        param1.m = 3;\n"
+                + "                        break loop1;\n"
+                + "                     }\n"
+                + "                     break loop2;\n"
+                + "                  }\n"
+                + "               }\n"
+                + "               param1.m = 4;\n"
+                + "               return;\n"
+                + "            }\n"
+                + "         }\n"
+                + "         param1.m = 1;\n");
+    }
+
+    @Test
+    public void testGotoIntoLoopFromCodeBeforeItAsLabeledBlocks() throws Exception {
+        //the code of a branch of an if inside a loop is also reached from before the
+        //loop, and it leaves the loop: it goes after the loop, in a block
+        String pCode = String.join("\n", new String[]{
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"a\")",
+                "iffalse ofsx0",
+                "ofsw:",
+                "label",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"b\")",
+                "iffalse ofsn",
+                "ofst:",
+                "label",
+                "getlocal1",
+                "pushbyte 1",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "jump ofsend",
+                "ofsn:",
+                "label",
+                "getlocal1",
+                "pushbyte 2",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"c\")",
+                "iffalse ofsend",
+                "getlocal1",
+                "pushbyte 3",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "jump ofsw",
+                "ofsend:",
+                "label",
+                "getlocal1",
+                "pushbyte 4",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "returnvoid",
+                "ofsx0:",
+                "label",
+                "getlocal1",
+                "pushbyte 5",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "jump ofst"
+        }) + "\n";
+        String res = decompilePCodeGotosAsBlocks(pCode);
+        assertTrue(!res.contains("goto"), "goto in " + res);
+        assertEquals(res, "         loop4:\n"
+                + "         {\n"
+                + "            loop7:\n"
+                + "            {\n"
+                + "               loop5:\n"
+                + "               {\n"
+                + "                  if(param1.a)\n"
+                + "                  {\n"
+                + "                     break loop5;\n"
+                + "                  }\n"
+                + "                  param1.m = 5;\n"
+                + "                  break loop7;\n"
+                + "               }\n"
+                + "               loop3:\n"
+                + "               {\n"
+                + "                  while(true)\n"
+                + "                  {\n"
+                + "                     if(param1.b)\n"
+                + "                     {\n"
+                + "                        break loop3;\n"
+                + "                     }\n"
+                + "                     param1.m = 2;\n"
+                + "                     if(!param1.c)\n"
+                + "                     {\n"
+                + "                        break;\n"
+                + "                     }\n"
+                + "                     param1.m = 3;\n"
+                + "                  }\n"
+                + "                  break loop4;\n"
+                + "               }\n"
+                + "            }\n"
+                + "            param1.m = 1;\n"
+                + "         }\n"
+                + "         param1.m = 4;\n");
+    }
+
+    @Test
+    public void testGotoIntoLoopWithTwoEntriesStays() throws Exception {
+        //a loop which is entered at two places can not be written without a goto
+        String pCode = String.join("\n", new String[]{
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"a\")",
+                "iffalse ofsm",
+                "ofsa:",
+                "label",
+                "getlocal1",
+                "pushbyte 1",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "ofsm:",
+                "label",
+                "getlocal1",
+                "pushbyte 2",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"c\")",
+                "iftrue ofsa"
+        }) + "\n";
+        String res = decompilePCodeGotosAsBlocks(pCode);
+        assertTrue(res.contains("§§goto("), "no goto in " + res);
+        assertJumpsHaveTargets(res);
     }
 }
