@@ -7555,4 +7555,103 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?m)^(\\s*)(?:continue|return|break)[^;\\n]*;\\r?\\n\\1(?!\\}|addr|loop|case |default:)[_a-z].*$").matcher(res);
         assertTrue(!m.find(), "code after a jump: " + (m.find(0) ? m.group() : "") + " in " + res);
     }
+
+    @Test
+    public void testWhileNotMadeWhenBodyBreaksItBeforeBreakOfOuterLoop() throws Exception {
+        //while(true) { if (c) { A; } break outer; } was written as while(c) { A; } break outer;
+        //the end of A went back to the condition instead of leaving the outer loop, and a
+        //break of the loop in A landed on the break of the outer loop, with the code that
+        //follows the loop left where nothing reaches it. A function compiled by FlasCC, with
+        //the control flow reduced to marks
+        String pCode = String.join("\n", new String[]{
+                "getlocal1",
+                "pushbyte 2",
+                "ifne ofs010b",
+                "getlocal1",
+                "pushbyte 3",
+                "ifeq ofs0130",
+                "ofs010b:",
+                "label",
+                "getlocal 40",
+                "pushbyte 12",
+                "add",
+                "li32",
+                "setlocal 36",
+                "getlocal 40",
+                "pushbyte 4",
+                "add",
+                "li32",
+                "setlocal 38",
+                "getlocal 36",
+                "pushbyte 4",
+                "add",
+                "li32",
+                "setlocal 22",
+                "getlocal 34",
+                "getlocal 22",
+                "ifeq ofs0141",
+                "ofs0130:",
+                "jump ofs07b1",
+                "ofs0141:",
+                "jump ofs06db",
+                "ofs01ac:",
+                "getlocal1",
+                "pushbyte 12",
+                "ifne ofs0258",
+                "ofs0243:",
+                "pushbyte 10",
+                "setlocal 3",
+                "jump ofs0258",
+                "ofs024f:",
+                "pushbyte 11",
+                "setlocal 3",
+                "ofs0258:",
+                "getlocal1",
+                "pushbyte 59",
+                "ifeq ofs07b1",
+                "ofs06db:",
+                "getlocal1",
+                "pushbyte 60",
+                "ifne ofs07a8",
+                "ofs06e8:",
+                "label",
+                "getlocal 10",
+                "pushbyte 0",
+                "ifeq ofs07b1",
+                "jump ofs0732",
+                "ofs06f5:",
+                "label",
+                "getlocal 10",
+                "pushbyte -1",
+                "add",
+                "convert_i",
+                "setlocal 10",
+                "getlocal 11",
+                "pushbyte 3",
+                "bitand",
+                "dup",
+                "setlocal 22",
+                "pushbyte 0",
+                "ifeq ofs06e8",
+                "jump ofs0243",
+                "ofs0710:",
+                "getlocal1",
+                "pushbyte 61",
+                "ifeq ofs06f5",
+                "jump ofs024f",
+                "ofs0732:",
+                "jump ofs0710",
+                "ofs07a8:",
+                "getlocal1",
+                "pushbyte 65",
+                "ifne ofs01ac",
+                "ofs07b1:",
+                "returnvoid"
+        }) + "\n";
+        String res = decompilePCodeSource(pCode, true);
+        assertJumpsHaveTargets(res);
+        assertTrue(!res.contains("while(_loc10_ != 0)"), "the loop was made a while: " + res);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?m)^(\\s*)(?:continue|return|break)[^;\\n]*;\\r?\\n\\1(?!\\}|addr|loop|case |default:)[_a-z].*$").matcher(res);
+        assertTrue(!m.find(), "code after a jump: " + (m.find(0) ? m.group() : "") + " in " + res);
+    }
 }
