@@ -68,8 +68,6 @@ public class GotoEliminator {
 
     private long nextId;
 
-    private final Set<String> touchedLabels = new HashSet<>();
-
     private static class Step {
 
         List<GraphTargetItem> list;
@@ -128,11 +126,11 @@ public class GotoEliminator {
                 }
             }
         }
-        removeUnusedLabels(root);
         String before;
         int rounds = 0;
         do {
             before = signature(root);
+            removeUnusedLabels(root);
             cleanup(root);
             rounds++;
         } while (rounds < 50 && !before.equals(signature(root)));
@@ -165,7 +163,6 @@ public class GotoEliminator {
                 if (pg.size() == c + 1 && i == j - 1) {
                     //goto to the next command
                     common.remove(i);
-                    touchedLabels.add(labelName);
                     return true;
                 }
                 long id = nextId++;
@@ -173,7 +170,6 @@ public class GotoEliminator {
                 replaceGotos(body, labelName, id, false);
                 removeRange(common, i, j);
                 common.add(i, new LabeledBlockItem(dialect, null, null, id, body));
-                touchedLabels.add(labelName);
                 return true;
             }
             if (j < i) {
@@ -185,7 +181,6 @@ public class GotoEliminator {
                 }
                 removeRange(common, j + 1, i + 1);
                 common.add(j + 1, new UniversalLoopItem(dialect, null, null, new Loop(id, null, null), body));
-                touchedLabels.add(labelName);
                 return true;
             }
             return false;
@@ -269,7 +264,6 @@ public class GotoEliminator {
                 common.add(j, new LabeledBlockItem(dialect, null, null, targetId, segment));
                 insertAll(common, j + 1, tail);
             }
-            touchedLabels.add(labelName);
             return true;
         }
         return false;
@@ -296,6 +290,8 @@ public class GotoEliminator {
                 sb.append('c').append(((ContinueItem) item).loopId);
             } else if (item instanceof LabeledBlockItem) {
                 sb.append('l').append(((LabeledBlockItem) item).id);
+            } else if (item instanceof LabelItem) {
+                sb.append('a');
             } else {
                 sb.append('i');
             }
@@ -642,7 +638,6 @@ public class GotoEliminator {
         } else {
             insertAll(common, j, current);
         }
-        touchedLabels.add(labelName);
         return true;
     }
 
@@ -1191,9 +1186,6 @@ public class GotoEliminator {
 
 
     private void removeUnusedLabels(List<GraphTargetItem> root) {
-        if (touchedLabels.isEmpty()) {
-            return;
-        }
         Set<String> used = new HashSet<>();
         for (GotoItem g : collectGotos(root)) {
             used.add(g.labelName);
@@ -1209,7 +1201,7 @@ public class GotoEliminator {
             GraphTargetItem item = list.get(i);
             if (item instanceof LabelItem) {
                 String name = ((LabelItem) item).labelName;
-                if (touchedLabels.contains(name) && !used.contains(name)) {
+                if (!used.contains(name)) {
                     list.remove(i);
                 }
                 continue;
