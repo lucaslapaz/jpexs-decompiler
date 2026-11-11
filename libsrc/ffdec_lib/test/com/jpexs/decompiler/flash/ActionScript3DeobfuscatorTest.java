@@ -7754,9 +7754,13 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
      * label (the other tests check the gotos as they are written).
      */
     private String decompilePCodeGotosAsBlocks(String pCode) throws Exception {
+        return decompilePCodeGotosAsBlocks(pCode, true);
+    }
+
+    private String decompilePCodeGotosAsBlocks(String pCode, boolean deobfuscate) throws Exception {
         Configuration.gotosAsLabeledBlocks.set(true);
         try {
-            return decompilePCodeSource(pCode, true);
+            return decompilePCodeSource(pCode, deobfuscate);
         } finally {
             Configuration.gotosAsLabeledBlocks.set(false);
         }
@@ -7920,6 +7924,163 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
                 + "            param1.m = 1;\n"
                 + "         }\n"
                 + "         param1.m = 4;\n");
+    }
+
+    @Test
+    public void testGotoFromCodeAfterLoopAtEndOfBlockAsLabeledBlocks() throws Exception {
+        //the code after a loop, at the end of the commands of a block, goes back
+        //into the loop: it reaches the end of the block, which is a break of the
+        //block, so it can be moved into the loop with that break
+        String pCode = String.join("\n", new String[]{
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"a\")",
+                "convert_i",
+                "setlocal3",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"b\")",
+                "convert_i",
+                "setlocal 5",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"c\")",
+                "convert_i",
+                "setlocal 7",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"d\")",
+                "convert_i",
+                "setlocal 9",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"e\")",
+                "convert_i",
+                "setlocal 10",
+                "jump ofs00a0",
+                "ofs004b:",
+                "label",
+                "getlocal 7",
+                "pushbyte 8",
+                "add",
+                "li32",
+                "dup",
+                "setlocal 8",
+                "pushbyte 0",
+                "ifne ofs00a9",
+                "getlocal3",
+                "convert_u",
+                "pushbyte 15",
+                "ifgt ofs0097",
+                "getlocal3",
+                "pushint 34375",
+                "bitand",
+                "dup",
+                "setlocal 8",
+                "pushbyte 0",
+                "ifne ofs011e",
+                "getlocal3",
+                "pushshort 384",
+                "bitand",
+                "dup",
+                "setlocal 8",
+                "pushbyte 0",
+                "ifne ofs00d2",
+                "ofs0097:",
+                "label",
+                "ofs00a0:",
+                "label",
+                "getlocal 7",
+                "pushbyte 0",
+                "ifne ofs004b",
+                "ofs00a9:",
+                "label",
+                "getlocal 5",
+                "pushbyte 4",
+                "add",
+                "li32",
+                "dup",
+                "setlocal 8",
+                "pushbyte 0",
+                "ifne ofs00d2",
+                "jump ofs0390",
+                "ofs00d2:",
+                "label",
+                "jump ofs0135",
+                "ofs011e:",
+                "label",
+                "ofs0135:",
+                "label",
+                "jump ofs0350",
+                "ofs02bc:",
+                "label",
+                "ofs0350:",
+                "label",
+                "getlocal 9",
+                "convert_u",
+                "getlocal 10",
+                "convert_u",
+                "iflt ofs02bc",
+                "ofs0390:",
+                "label"
+        }) + "\n";
+        String res = decompilePCodeGotosAsBlocks(pCode, false);
+        assertTrue(!res.contains("goto"), "goto in " + res);
+        assertJumpsHaveTargets(res);
+        assertEquals(res, "         var _loc3_:int = int(param1.a);\n"
+                + "         var _loc5_:int = int(param1.b);\n"
+                + "         var _loc7_:int = int(param1.c);\n"
+                + "         var _loc9_:int = int(param1.d);\n"
+                + "         var _loc10_:int = int(param1.e);\n"
+                + "         loop2:\n"
+                + "         {\n"
+                + "            while(true)\n"
+                + "            {\n"
+                + "               var _loc8_:int;\n"
+                + "               loop9:\n"
+                + "               {\n"
+                + "                  loop8:\n"
+                + "                  {\n"
+                + "                     loop7:\n"
+                + "                     {\n"
+                + "                        if(_loc7_ == 0)\n"
+                + "                        {\n"
+                + "                           break loop7;\n"
+                + "                        }\n"
+                + "                        _loc8_ = li32(_loc7_ + 8);\n"
+                + "                        if(_loc8_ != 0)\n"
+                + "                        {\n"
+                + "                           break loop7;\n"
+                + "                        }\n"
+                + "                        loop5:\n"
+                + "                        {\n"
+                + "                           if(uint(_loc3_) <= 15)\n"
+                + "                           {\n"
+                + "                              _loc8_ = _loc3_ & 0x8647;\n"
+                + "                              break loop5;\n"
+                + "                           }\n"
+                + "                           continue;\n"
+                + "                        }\n"
+                + "                        if(_loc8_ == 0)\n"
+                + "                        {\n"
+                + "                           _loc8_ = _loc3_ & 0x0180;\n"
+                + "                           if(_loc8_ == 0)\n"
+                + "                           {\n"
+                + "                              continue;\n"
+                + "                           }\n"
+                + "                           break loop8;\n"
+                + "                        }\n"
+                + "                        break loop9;\n"
+                + "                     }\n"
+                + "                     _loc8_ = li32(_loc5_ + 4);\n"
+                + "                     if(_loc8_ != 0)\n"
+                + "                     {\n"
+                + "                        break loop8;\n"
+                + "                     }\n"
+                + "                     break loop2;\n"
+                + "                  }\n"
+                + "               }\n"
+                + "               while(uint(_loc9_) < uint(_loc10_))\n"
+                + "               {\n"
+                + "               }\n"
+                + "               break loop2;\n"
+                + "            }\n"
+                + "         }\n");
     }
 
     @Test
