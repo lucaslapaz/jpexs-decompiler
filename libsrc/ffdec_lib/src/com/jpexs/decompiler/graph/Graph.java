@@ -2400,6 +2400,29 @@ public class Graph {
     }
 
     /**
+     * Whether the commands have a break of the loop.
+     *
+     * @param commands Commands
+     * @param loopId Loop id
+     * @return True when they break the loop
+     */
+    private boolean hasBreakOfLoop(List<GraphTargetItem> commands, long loopId) {
+        for (GraphTargetItem ti : commands) {
+            if (ti instanceof BreakItem && ((BreakItem) ti).loopId == loopId) {
+                return true;
+            }
+            if (ti instanceof Block) {
+                for (List<GraphTargetItem> sub : ((Block) ti).getSubs()) {
+                    if (hasBreakOfLoop(sub, loopId)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * Whether the commands have a break or continue of the loop.
      *
      * @param commands Commands
@@ -5429,7 +5452,21 @@ public class Graph {
                     bodyBranch = inverted ? ifi.onFalse : ifi.onTrue;
                     breakpos2 = true;
                     if (bi.loopId != loopLocalData.currentLoop.id) { //it's break of another parent loop
-                        addBreakItem = bi; //we must add it after the loop
+                        if (hasBreakOfLoop(bodyBranch, loopLocalData.currentLoop.id)) {
+                            //a break of this loop would land on the break of the parent loop
+                            //that is added after it: the loop stays as it is
+                            bodyBranch = null;
+                            breakpos2 = false;
+                        } else {
+                            addBreakItem = bi; //we must add it after the loop
+                            //the end of the body goes to that break too, not to the condition
+                            GraphTargetItem lastOfBranch = bodyBranch.get(bodyBranch.size() - 1);
+                            if (!(lastOfBranch instanceof ContinueItem)
+                                    && !(lastOfBranch instanceof BreakItem)
+                                    && !(lastOfBranch instanceof ExitItem)) {
+                                bodyBranch.add(bi.clone());
+                            }
+                        }
                     } else {
                         if (!(bodyBranch.get(bodyBranch.size() - 1) instanceof ContinueItem)
                                 && !(bodyBranch.get(bodyBranch.size() - 1) instanceof BreakItem)
