@@ -56,6 +56,8 @@ import java.util.Set;
  * the block go into the block</li>
  * <li>goto after a block which has the label: the code of the label is moved
  * after the goto, when it never continues with the code after it</li>
+ * <li>label in a block in the body of a loop, followed by code which ends the
+ * loop (it returns or leaves the loop): that code goes after the loop first</li>
  * </ul>
  * Code which is moved and reaches the end of its list gets the jump which
  * does what that end does: the break of the block whose commands the list
@@ -70,6 +72,14 @@ public class GotoEliminator {
     private final GraphTargetDialect dialect;
 
     private long nextId;
+
+    /**
+     * Code which liftLoopExitCode moved out of a loop (its first command), and
+     * the ids of the breaks it wrote in its place: they are not moved again.
+     */
+    private final Set<GraphTargetItem> liftedExitCode = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    private final Set<Long> exitBreakIds = new HashSet<>();
 
     private static class Step {
 
@@ -198,6 +208,9 @@ public class GotoEliminator {
             }
             Step labelStep = pl.get(pl.size() - 1);
             if (lift(pl.get(t).list, pl.get(t).index, container, pl.get(t + 1).list, pl.get(t + 1).index, labelStep.list, labelStep.index, pl, t + 1)) {
+                return true;
+            }
+            if (liftLoopExitCode(pl, t)) {
                 return true;
             }
             //The goto after a loop without end, back to its body: the code
@@ -970,6 +983,64 @@ public class GotoEliminator {
             return true;
         }
         return false;
+    }
+
+    /**
+     * The label is in a block in the body of a loop, and the code after the
+     * block, to the end of the body, ends the loop (it never continues it nor
+     * reaches the end of the body, it returns or leaves the loop): that code
+     * goes after the loop, and a break of a block around the loop takes its
+     * place. The code of the label then leaves its blocks with a simple jump,
+     * and can be moved out of the loop.
+     * <pre>
+     * while(c) { b: { a; label: x; } y; return; }
+     * </pre> becomes
+     * <pre>
+     * o: { n: { while(c) { b: { a; label: x; } break n; } break o; } y; return; }
+     * </pre>
+     *
+     * The same code is moved once, and the break written in its place is not
+     * moved: moving the code after a block to its only break
+     * (moveCodeToOnlyBreak) does the opposite.
+     *
+     * @param path Path to the label
+     * @param t Index in the path of the loop
+     * @return True if moved
+     */
+    private boolean liftLoopExitCode(List<Step> path, int t) {
+        GraphTargetItem container = path.get(t).item();
+        if (!(container instanceof LoopItem) || (container instanceof SwitchItem)) {
+            return false;
+        }
+        LoopItem loopItem = (LoopItem) container;
+        Step bodyStep = path.get(t + 1);
+        if (loopItem.loop == null || !loopItem.hasBaseBody() || loopItem.getBaseBodyCommands() != bodyStep.list) {
+            return false;
+        }
+        if (t + 1 >= path.size() - 1 || !(bodyStep.item() instanceof LabeledBlockItem)) {
+            //the label is right in the body
+            return false;
+        }
+        List<GraphTargetItem> body = bodyStep.list;
+        int first = bodyStep.index + 1;
+        List<GraphTargetItem> rest = slice(body, first, body.size());
+        Set<Long> ids = new HashSet<>();
+        ids.add(loopItem.loop.id);
+        if (rest.isEmpty() || liftedExitCode.contains(rest.get(0)) || canCompleteNormally(rest) || hasJumpTo(rest, ids, false)) {
+            return false;
+        }
+        if (rest.size() == 1 && (rest.get(0) instanceof BreakItem) && exitBreakIds.contains(((BreakItem) rest.get(0)).loopId)) {
+            //the break which this rule wrote in place of the code
+            return false;
+        }
+        if (!lift(path.get(t).list, path.get(t).index, container, body, first, body, first, path, path.size())) {
+            return false;
+        }
+        liftedExitCode.add(rest.get(0));
+        if (!body.isEmpty() && (body.get(body.size() - 1) instanceof BreakItem)) {
+            exitBreakIds.add(((BreakItem) body.get(body.size() - 1)).loopId);
+        }
+        return true;
     }
 
     /**
