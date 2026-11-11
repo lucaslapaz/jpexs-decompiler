@@ -1238,6 +1238,9 @@ public class Graph {
 
         finalProcessAll(null, ret, 0, getFinalData(localData, loops, throwStates), path);
         //fixSwitchEnds(ret);
+        if (Configuration.gotosAsLabeledBlocks.get()) {
+            new GotoEliminator(dialect).eliminate(ret);
+        }
         handleSetTemporaryDeclarations(ret);
         return ret;
     }

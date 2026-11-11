@@ -57,6 +57,7 @@ public abstract class ActionScript3DecompileTestBase extends ActionScriptTestBas
     public void initConfiguration() throws IOException, InterruptedException {
         Configuration.autoDeobfuscate.set(false);
         Configuration.simplifyExpressions.set(false);
+        Configuration.gotosAsLabeledBlocks.set(false);
 
         Configuration.decompile.set(true);
         Configuration.registerNameFormat.set("_loc%d_");

@@ -648,6 +648,10 @@ public final class Configuration {
     @ConfigurationCategory("script")
     public static ConfigurationItem<Boolean> simplifyExpressions = null;
 
+    @ConfigurationDefaultBoolean(true)
+    @ConfigurationCategory("script")
+    public static ConfigurationItem<Boolean> gotosAsLabeledBlocks = null;
+
     @ConfigurationDefaultBoolean(false)
     @ConfigurationInternal
     public static ConfigurationItem<Boolean> hwAcceleratedGraphics = null;
