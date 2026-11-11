@@ -7654,4 +7654,96 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?m)^(\\s*)(?:continue|return|break)[^;\\n]*;\\r?\\n\\1(?!\\}|addr|loop|case |default:)[_a-z].*$").matcher(res);
         assertTrue(!m.find(), "code after a jump: " + (m.find(0) ? m.group() : "") + " in " + res);
     }
+
+    @Test
+    public void testLoopBreakSharedWithNaturalExit() throws Exception {
+        //A loop inside another loop, whose natural exit goes through a part without
+        //any command (junk left by an obfuscator: pushfalse, dup, pop, pop) to the code
+        //after the loop, and whose break goes straight to that code. The code after the loop
+        //leads only to the precontinue of the outer loop, so it was taken as a prefix of
+        //an abrupt exit, the empty part became the break and the code after the loop was
+        //written inside the loop, with gotos.
+        String pCode = String.join("\n", new String[]{
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"c1\")",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"n\")",
+                "ifnlt ofsend",
+                "pushbyte 0",
+                "setlocal 6",
+                "jump ofsc6",
+                "ofsb6:",
+                "label",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"c3\")",
+                "iffalse ofsl77",
+                "jump ofsinc6",
+                "ofsl77:",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"c4\")",
+                "iffalse ofselse",
+                "pushbyte 0",
+                "setlocal 9",
+                "jump ofsc9",
+                "ofsb9:",
+                "label",
+                "getlocal1",
+                "pushbyte 11",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"c5\")",
+                "iffalse ofsl185",
+                "jump ofsx",
+                "ofsl185:",
+                "inclocal_i 9",
+                "ofsc9:",
+                "getlocal 9",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"n\")",
+                "iflt ofsb9",
+                "pushfalse",
+                "dup",
+                "pop",
+                "pop",
+                "ofsx:",
+                "getlocal1",
+                "pushbyte 12",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"c7\")",
+                "iffalse ofstail",
+                "getlocal1",
+                "pushbyte 13",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "jump ofstail",
+                "ofselse:",
+                "getlocal1",
+                "pushbyte 14",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "ofstail:",
+                "getlocal1",
+                "pushbyte 15",
+                "setproperty QName(PackageNamespace(\"\"),\"m\")",
+                "ofsinc6:",
+                "inclocal_i 6",
+                "ofsc6:",
+                "getlocal 6",
+                "getlocal1",
+                "getproperty QName(PackageNamespace(\"\"),\"n\")",
+                "iflt ofsb6",
+                "ofsend:"
+        }) + "\n";
+        String res = decompilePCodeSource(pCode, true);
+        assertTrue(!res.contains("goto"), "goto in " + res);
+        assertTrue(res.contains("                     while(_loc9_ < param1.n)\n"
+                + "                     {\n"
+                + "                        param1.m = 11;\n"
+                + "                        if(param1.c5)\n"
+                + "                        {\n"
+                + "                           break;\n"
+                + "                        }\n"
+                + "                        _loc9_++;\n"
+                + "                     }\n"
+                + "                     param1.m = 12;\n"), "the inner loop is not a while with a break: " + res);
+    }
 }

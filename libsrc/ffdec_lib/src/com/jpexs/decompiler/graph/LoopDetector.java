@@ -565,10 +565,20 @@ public class LoopDetector {
                 Set<GraphPart> boundaryTargets = new LinkedHashSet<>(abruptTargets);
                 boundaryTargets.addAll(naturalOutParts);
                 boundaryTargets.addAll(exceptionTargets);
+                //The code which the natural exit of the loop passes through is the code
+                //after the loop, shared with the other exits leading to it.
+                //It is not a prefix of an abrupt exit.
+                Set<GraphPart> afterNaturalExit = new LinkedHashSet<>();
+                for (GraphPart naturalOutPart : naturalOutParts) {
+                    if (!abruptTargets.contains(naturalOutPart)) {
+                        afterNaturalExit.addAll(getReachable(naturalOutPart, backEdges, abruptTargets, walker, ignoredEdges));
+                    }
+                }
                 for (GraphPart outPart : outParts) {
                     if (naturalOutParts.contains(outPart)
                             || exceptionTargets.contains(outPart)
-                            || abruptTargets.contains(outPart)) {
+                            || abruptTargets.contains(outPart)
+                            || afterNaturalExit.contains(outPart)) {
                         continue;
                     }
                     if (leadsOnlyToAbruptTargets(
