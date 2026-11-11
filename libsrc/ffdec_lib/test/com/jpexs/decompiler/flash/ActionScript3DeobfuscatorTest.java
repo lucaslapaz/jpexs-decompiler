@@ -6871,4 +6871,59 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
         String res = decompilePCodeSource(pCode, true);
         assertTrue(res.contains("slot[3] = 5;"), res);
     }
+
+    @Test
+    public void testPrecontinueNotWrittenAfterLoopExit() throws Exception {
+        //the precontinue of a loop is written before each continue and at the end of the body;
+        //when the body ends leaving the loop (a break), the copy at the end was code that
+        //nothing reaches. A function compiled by FlasCC, with the control flow reduced to marks
+        String pCode = String.join("\n", new String[]{
+                "pushbyte 1",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 1",
+                "iflt ofs0177",
+                "ofs0025:",
+                "pushbyte 2",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 2",
+                "iflt ofs0125",
+                "pushbyte 3",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 3",
+                "ifne ofs00c6",
+                "pushbyte 4",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 4",
+                "ifne ofs0151",
+                "pushbyte 5",
+                "setlocal 3",
+                "jump ofs0151",
+                "ofs00c6:",
+                "pushbyte 6",
+                "setlocal 3",
+                "getlocal1",
+                "pushbyte 5",
+                "ifne ofs0125",
+                "pushbyte 7",
+                "setlocal 3",
+                "jump ofs0025",
+                "ofs0125:",
+                "pushbyte 8",
+                "setlocal 3",
+                "ofs0151:",
+                "pushbyte 9",
+                "setlocal 3",
+                "ofs0177:",
+                "pushbyte 10",
+                "setlocal 3",
+                "returnvoid"
+        }) + "\n";
+        String res = decompilePCodeSource(pCode, true);
+        assertTrue(java.util.regex.Pattern.compile("_loc3_ = 7;\\s*continue;").matcher(res).find(), res);
+        assertTrue(java.util.regex.Pattern.compile("_loc3_ = 8;\\s*break;\\s*}").matcher(res).find(), res);
+    }
 }

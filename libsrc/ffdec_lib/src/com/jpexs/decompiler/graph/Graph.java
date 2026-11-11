@@ -5523,7 +5523,22 @@ public class Graph {
             //a continue of the loop goes to the precontinue, which is written at the end of the
             //body: the continue would skip it (an endless loop when it is the decrement)
             insertBeforeContinuesOfLoop(loopLocalData.loopItem.commands, loopLocalData.currentLoop.id, loopLocalData.precontinueCommands);
-            loopLocalData.loopItem.commands.addAll(loopLocalData.precontinueCommands);
+            //the end of the body is not reached when it leaves the loop: the precontinue there
+            //would be code that nothing reaches
+            List<GraphTargetItem> bodyCommands = loopLocalData.loopItem.commands;
+            GraphTargetItem lastOfBody = bodyCommands.isEmpty() ? null : bodyCommands.get(bodyCommands.size() - 1);
+            boolean endReached = !((lastOfBody instanceof BreakItem) || (lastOfBody instanceof ContinueItem)
+                    || (lastOfBody instanceof ExitItem) || (lastOfBody instanceof GotoItem));
+            boolean precontinueHasLabel = false;
+            for (GraphTargetItem pc : loopLocalData.precontinueCommands) {
+                if (containsLabel(pc)) {
+                    precontinueHasLabel = true;
+                    break;
+                }
+            }
+            if (endReached || precontinueHasLabel) {
+                bodyCommands.addAll(loopLocalData.precontinueCommands);
+            }
         }
 
         //Loop with condition at the end (Do..While)
