@@ -235,9 +235,12 @@ public class DefineBitsJPEG3Tag extends ImageTag implements AloneTag, HasSeparat
                 int b = (pixels[i] >> 16) & 0xff;
                 int g = (pixels[i] >> 8) & 0xff;
                 int r = (pixels[i]) & 0xff;
-                r = ImageHelper.unmultiplyAlpha(r, a);
-                g = ImageHelper.unmultiplyAlpha(g, a);
-                b = ImageHelper.unmultiplyAlpha(b, a);
+                // The JPEG colors should be premultiplied, but lossy compression (or an incorrect SWF)
+                // gives colors above the alpha value; Flash Player clamps them to it (as Ruffle does in
+                // render/src/utils.rs, decode_jpeg)
+                r = ImageHelper.unmultiplyAlpha(Math.min(r, a), a);
+                g = ImageHelper.unmultiplyAlpha(Math.min(g, a), a);
+                b = ImageHelper.unmultiplyAlpha(Math.min(b, a), a);
 
                 pixels2[i] = (a << 24) | (b << 16) | (g << 8) | r;
             }
