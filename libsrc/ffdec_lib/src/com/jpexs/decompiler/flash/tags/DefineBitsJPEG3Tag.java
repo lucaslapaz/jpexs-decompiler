@@ -235,18 +235,9 @@ public class DefineBitsJPEG3Tag extends ImageTag implements AloneTag, HasSeparat
                 int b = (pixels[i] >> 16) & 0xff;
                 int g = (pixels[i] >> 8) & 0xff;
                 int r = (pixels[i]) & 0xff;
-                r = (int) Math.floor(r * 255.0 / a);
-                g = (int) Math.floor(g * 255.0 / a);
-                b = (int) Math.floor(b * 255.0 / a);
-                if (r > 255) {
-                    r = 255;
-                }
-                if (g > 255) {
-                    g = 255;
-                }
-                if (b > 255) {
-                    b = 255;
-                }
+                r = ImageHelper.unmultiplyAlpha(r, a);
+                g = ImageHelper.unmultiplyAlpha(g, a);
+                b = ImageHelper.unmultiplyAlpha(b, a);
 
                 pixels2[i] = (a << 24) | (b << 16) | (g << 8) | r;
             }
