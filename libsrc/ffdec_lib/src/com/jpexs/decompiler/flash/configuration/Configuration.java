@@ -1212,6 +1212,10 @@ public final class Configuration {
     @ConfigurationDefaultBoolean(false)
     @ConfigurationCategory("ui")
     public static ConfigurationItem<Boolean> sortDebugVariablesAlphabetically = null;
+
+    @ConfigurationDefaultBoolean(true)
+    @ConfigurationCategory("script")
+    public static ConfigurationItem<Boolean> as3LocalDeclarationsAtFirstUse = null;
     
     @ConfigurationDefaultBoolean(true)
     @ConfigurationCategory("export")

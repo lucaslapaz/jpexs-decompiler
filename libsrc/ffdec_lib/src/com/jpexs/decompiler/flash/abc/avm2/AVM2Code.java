@@ -3170,6 +3170,9 @@ public class AVM2Code implements Cloneable {
         }
         injectDeclarations(usedDeobfuscations, 0, paramNamesList, list, 1, d, new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), abc, body);
         uniteLocalsDeclarationTypes(d, list);
+        if (Configuration.as3LocalDeclarationsAtFirstUse.get()) {
+            new AVM2LocalDeclarationPlacement(r).place(list);
+        }
         return list;
     }
 
