@@ -963,6 +963,12 @@ public class ActionLocalRegisterNamer {
                 return Name.of(clean(name.substring(prefix.length())));
             }
         }
-        return Name.of(clean(Character.toLowerCase(name.charAt(0)) + name.substring(1)));
+        //escape(x) gives escape, the name of the function itself: escapeResult, not escape2, which
+        //looks like another function
+        return resultOf(clean(Character.toLowerCase(name.charAt(0)) + name.substring(1)));
+    }
+
+    private static Name resultOf(String name) {
+        return name == null ? null : new Name(name, name + "Result", false);
     }
 }

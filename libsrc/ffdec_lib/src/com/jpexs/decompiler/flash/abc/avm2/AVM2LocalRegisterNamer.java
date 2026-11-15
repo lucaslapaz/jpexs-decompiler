@@ -1236,7 +1236,13 @@ public class AVM2LocalRegisterNamer {
                 return Name.of(clean(name.substring(prefix.length())));
             }
         }
-        return Name.of(clean(name));
+        //decodeURI(x) gives decodeURI, the name of the function itself: decodeURIResult, not decodeURI2,
+        //which looks like another function
+        return resultOf(clean(name));
+    }
+
+    private static Name resultOf(String name) {
+        return name == null ? null : new Name(name, name + "Result", false);
     }
 
     private String getPropertyName(GraphTargetItem propertyName) {
