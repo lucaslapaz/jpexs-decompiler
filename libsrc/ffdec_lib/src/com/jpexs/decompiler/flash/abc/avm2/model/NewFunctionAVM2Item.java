@@ -112,6 +112,12 @@ public class NewFunctionAVM2Item extends AVM2Item {
             return writer.append("§§method(").append(methodIndex).append(")");
         }
         MethodBody body = abc.findBody(methodIndex);
+        List<MethodBody> callStack = new ArrayList<>(localData.callStack);
+        if (body != null) {
+            callStack.add(body);
+            //convert before the parameters are written, they can get names from the body
+            body.convert(localData.swfVersion, callStack, localData.abcIndex, new ConvertData(), path + "/inner", ScriptExportMode.AS, isStatic, methodIndex, scriptIndex, classIndex, abc, null, scopeStack, 0, new NulWriter(), localData.fullyQualifiedNames, null, false, new HashSet<>(localData.seenMethods), new ArrayList<>(), localData.usedDeobfuscations);
+        }
         writer.append("function");
         writer.startMethod(methodIndex, null);
         writer.append((!functionName.isEmpty() ? " " + functionName : ""));
@@ -128,9 +134,6 @@ public class NewFunctionAVM2Item extends AVM2Item {
         abc.method_info.get(methodIndex).getReturnTypeStr(writer, abc, abc.constants, localData.fullyQualifiedNames, localData.usedDeobfuscations);
         writer.startBlock();
         if (body != null) {
-            List<MethodBody> callStack = new ArrayList<>(localData.callStack);
-            callStack.add(body);
-            body.convert(localData.swfVersion, callStack, localData.abcIndex, new ConvertData(), path + "/inner", ScriptExportMode.AS, isStatic, methodIndex, scriptIndex, classIndex, abc, null, scopeStack, 0, new NulWriter(), localData.fullyQualifiedNames, null, false, new HashSet<>(localData.seenMethods), new ArrayList<>(), localData.usedDeobfuscations);
             body.toString(localData.usedDeobfuscations, localData.swfVersion, callStack, localData.abcIndex, path + "/inner", ScriptExportMode.AS, abc, null, writer, localData.fullyQualifiedNames, new HashSet<>(localData.seenMethods), localData.classIndex);
         }
         writer.endBlock();
