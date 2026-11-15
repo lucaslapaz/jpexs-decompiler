@@ -214,6 +214,13 @@ public class AVM2LocalData extends BaseLocalData {
     public Set<Integer> finallyIndicesWithDoublePush = new HashSet<>();
 
     /**
+     * Positions of the instructions which save the index of a stack based
+     * finally block to a register (coerce_a, setlocal) around a try inside
+     * the finally block. They are not translated.
+     */
+    public Set<Integer> finallyIndexSaveIps = new HashSet<>();
+
+    /**
      * Whether we are in get loops
      */
     public boolean inGetLoops = false;
@@ -284,6 +291,7 @@ public class AVM2LocalData extends BaseLocalData {
         defaultWays = localData.defaultWays;
         switchedRegs = localData.switchedRegs;
         finallyIndicesWithDoublePush = localData.finallyIndicesWithDoublePush;
+        finallyIndexSaveIps = localData.finallyIndexSaveIps;
         finallyJumpsToFinallyIndex = localData.finallyJumpsToFinallyIndex;
         finallyIndexToDefaultGraphPart = localData.finallyIndexToDefaultGraphPart;
         defaultParts = localData.defaultParts;

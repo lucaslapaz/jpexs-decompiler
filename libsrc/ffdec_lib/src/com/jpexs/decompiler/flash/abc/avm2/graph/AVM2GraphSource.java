@@ -21,6 +21,7 @@ import com.jpexs.decompiler.flash.abc.ABC;
 import com.jpexs.decompiler.flash.abc.AVM2LocalData;
 import com.jpexs.decompiler.flash.abc.avm2.AVM2Code;
 import com.jpexs.decompiler.flash.abc.avm2.instructions.AVM2Instruction;
+import com.jpexs.decompiler.flash.abc.avm2.instructions.localregs.SetLocalTypeIns;
 import com.jpexs.decompiler.flash.abc.types.MethodBody;
 import com.jpexs.decompiler.graph.DottedChain;
 import com.jpexs.decompiler.graph.Graph;
@@ -200,8 +201,30 @@ public class AVM2GraphSource extends GraphSource {
     @Override
     public void translatePart(List<GraphTargetItem> output, Graph graph, GraphPart part, BaseLocalData localData, TranslateStack stack, int start, int end, int staticOperation, String path) throws InterruptedException {
         Reference<GraphSourceItem> lineStartItem = new Reference<>(localData.lineStartInstruction);
+        //the instructions saving the index of a finally block are left out: the index
+        //is not a value of the code (see AVM2Graph.getIgnoredSwitches)
+        Set<Integer> skippedIps = ((AVM2LocalData) localData).finallyIndexSaveIps;
+        int segmentStart = start;
+        for (int ip = start; ip <= end; ip++) {
+            if (!skippedIps.contains(ip)) {
+                continue;
+            }
+            if (ip > segmentStart) {
+                translateSegment(output, part, localData, stack, segmentStart, ip - 1, path, lineStartItem);
+            }
+            if ((code.code.get(ip).definition instanceof SetLocalTypeIns) && !stack.isEmpty()) {
+                stack.pop();
+            }
+            segmentStart = ip + 1;
+        }
+        if (segmentStart <= end) {
+            translateSegment(output, part, localData, stack, segmentStart, end, path, lineStartItem);
+        }
+        localData.lineStartInstruction = lineStartItem.getVal();
+    }
+
+    private void translateSegment(List<GraphTargetItem> output, GraphPart part, BaseLocalData localData, TranslateStack stack, int start, int end, String path, Reference<GraphSourceItem> lineStartItem) throws InterruptedException {
         code.toSourceOutput(localData.maxTempIndex, output, localData.swfVersion, ((AVM2LocalData) localData).callStack, ((AVM2LocalData) localData).abcIndex, ((AVM2LocalData) localData).setLocalPosToGetLocalPos, ((AVM2LocalData) localData).thisHasDefaultToPrimitive, lineStartItem, path, part, false, isStatic, scriptIndex, classIndex, localRegs, stack, ((AVM2LocalData) localData).scopeStack, ((AVM2LocalData) localData).localScopeStack, abc, body, start, end, localRegNames, ((AVM2LocalData) localData).localRegTypes, fullyQualifiedNames, new boolean[size()], localRegAssignmentIps, ((AVM2LocalData) localData).bottomSetLocals, localData.usedDeobfuscations);
-        localData.lineStartInstruction = lineStartItem.getVal();        
     }
 
     /**
