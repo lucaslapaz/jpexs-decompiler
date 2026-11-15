@@ -94,6 +94,37 @@ public class ActionScript2LocalNamesTest extends ActionScript2TestBase {
     }
 
     @Test
+    public void testResultOfFunctionWithTheSameName() throws Exception {
+        //the value of escape(text) would be escape, the name of the function itself;
+        //a copy of the SWF, the other tests read the frame
+        SWF copy = new SWF(new BufferedInputStream(new FileInputStream("testdata/as2/as2.swf")), false);
+        DoActionTag doa = null;
+        for (Tag t : copy.getTags()) {
+            if (t instanceof DoActionTag) {
+                doa = (DoActionTag) t;
+                break;
+            }
+        }
+        assertNotNull(doa);
+        //register 3 has no name, as Flash compiles the locals
+        doa.setActionBytes(Action.actionsToBytes(com.jpexs.decompiler.flash.action.parser.pcode.ASMParser.parse(0, true, "ConstantPool\n"
+                + "DefineFunction2 \"encode\" 1 4 false true true false true false true false false 2 \"text\" {\n"
+                + "Push register2 1 \"escape\"\n"
+                + "CallFunction\n"
+                + "StoreRegister 3\n"
+                + "Pop\n"
+                + "Push register3\n"
+                + "Trace\n"
+                + "}\n", copy.version, false, copy.getCharset(), copy.getSwfProfile()), true, copy.version));
+        HighlightedTextWriter writer = new HighlightedTextWriter(new CodeFormatting(), false);
+        Action.actionsToSource(new HashMap<>(), doa, doa.getActions(), "", writer, Utf8Helper.charsetName);
+        writer.finishHilights();
+        String result = writer.toString();
+        org.testng.Assert.assertTrue(result.contains("var escapeResult = escape(text);"), result);
+        org.testng.Assert.assertTrue(result.contains("trace(escapeResult);"), result);
+    }
+
+    @Test
     public void frame40_forInTest() {
         compareSrc(40, "function testForIn()\r\n"
                 + "{\r\n"
