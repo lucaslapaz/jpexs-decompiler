@@ -1724,6 +1724,298 @@ public class ActionScript3DeobfuscatorTest extends ActionScriptTestBase {
     }
 
     @Test
+    public void testTryInsideFinally() throws Exception {
+        //try { trace("t"); } catch(e:Error) { trace("c"); }
+        //finally { trace("f1"); try { trace("t2"); } catch(e2:Error) { trace("c2"); } finally { trace("f2"); } }
+        //ASC keeps the index of the outer finally on the stack, but a try needs an empty stack:
+        //it is saved to a register (setlocal 4) before the inner try and read back for the
+        //outer lookupswitch (getlocal 4, convert_i, kill 4)
+        String pCode = String.join("\n", new String[]{
+            "ofs_t:",
+            "findpropstrict QName(PackageNamespace(\"\"),\"trace\")",
+            "pushstring \"t\"",
+            "callpropvoid QName(PackageNamespace(\"\"),\"trace\"), 1",
+            "ofs_te:",
+            "jump ofs_n",
+            "ofs_c:",
+            "getlocal0",
+            "pushscope",
+            "newcatch 0",
+            "dup",
+            "setlocal2",
+            "dup",
+            "pushscope",
+            "swap",
+            "setslot 1",
+            "findpropstrict QName(PackageNamespace(\"\"),\"trace\")",
+            "pushstring \"c\"",
+            "callpropvoid QName(PackageNamespace(\"\"),\"trace\"), 1",
+            "popscope",
+            "kill 2",
+            "ofs_n:",
+            "pushbyte -1",
+            "ofs_fe:",
+            "jump ofs_f",
+            "ofs_ft:",
+            "getlocal0",
+            "pushscope",
+            "newcatch 1",
+            "dup",
+            "setlocal2",
+            "pushscope",
+            "popscope",
+            "kill 2",
+            "coerce_a",
+            "setlocal3",
+            "pushbyte 0",
+            "jump ofs_f",
+            "label",
+            "pop",
+            "ofs_r:",
+            "label",
+            "getlocal3",
+            "kill 3",
+            "throw",
+            "ofs_f:",
+            "findpropstrict QName(PackageNamespace(\"\"),\"trace\")",
+            "pushstring \"f1\"",
+            "callpropvoid QName(PackageNamespace(\"\"),\"trace\"), 1",
+            "ofs_t2:",
+            "coerce_a",
+            "setlocal 4",
+            "findpropstrict QName(PackageNamespace(\"\"),\"trace\")",
+            "pushstring \"t2\"",
+            "callpropvoid QName(PackageNamespace(\"\"),\"trace\"), 1",
+            "ofs_t2e:",
+            "jump ofs_n2",
+            "ofs_c2:",
+            "getlocal0",
+            "pushscope",
+            "newcatch 2",
+            "dup",
+            "setlocal 5",
+            "dup",
+            "pushscope",
+            "swap",
+            "setslot 1",
+            "findpropstrict QName(PackageNamespace(\"\"),\"trace\")",
+            "pushstring \"c2\"",
+            "callpropvoid QName(PackageNamespace(\"\"),\"trace\"), 1",
+            "popscope",
+            "kill 5",
+            "ofs_n2:",
+            "pushbyte -1",
+            "ofs_f2e:",
+            "jump ofs_f2",
+            "ofs_f2t:",
+            "getlocal0",
+            "pushscope",
+            "newcatch 3",
+            "dup",
+            "setlocal 5",
+            "pushscope",
+            "popscope",
+            "kill 5",
+            "coerce_a",
+            "setlocal 6",
+            "pushbyte 0",
+            "jump ofs_f2",
+            "label",
+            "pop",
+            "ofs_r2:",
+            "label",
+            "getlocal 6",
+            "kill 6",
+            "throw",
+            "ofs_f2:",
+            "findpropstrict QName(PackageNamespace(\"\"),\"trace\")",
+            "pushstring \"f2\"",
+            "callpropvoid QName(PackageNamespace(\"\"),\"trace\"), 1",
+            "lookupswitch ofs_a2, [ofs_r2]",
+            "ofs_a2:",
+            "getlocal 4",
+            "convert_i",
+            "kill 4",
+            "lookupswitch ofs_a, [ofs_r]",
+            "ofs_a:",
+            "try from ofs_t to ofs_te target ofs_c type QName(PackageNamespace(\"\"),\"Error\") name QName(PackageNamespace(\"\"),\"e\") end",
+            "try from ofs_t to ofs_fe target ofs_ft type null name null end",
+            "try from ofs_t2 to ofs_t2e target ofs_c2 type QName(PackageNamespace(\"\"),\"Error\") name QName(PackageNamespace(\"\"),\"e2\") end",
+            "try from ofs_t2 to ofs_f2e target ofs_f2t type null name null end"
+        }) + "\n";
+        String res = decompilePCodeSource(pCode, false);
+        assertEquals(res, "         try\n"
+                + "         {\n"
+                + "            trace(\"t\");\n"
+                + "         }\n"
+                + "         catch(e:Error)\n"
+                + "         {\n"
+                + "            trace(\"c\");\n"
+                + "         }\n"
+                + "         finally\n"
+                + "         {\n"
+                + "            trace(\"f1\");\n"
+                + "            try\n"
+                + "            {\n"
+                + "               trace(\"t2\");\n"
+                + "            }\n"
+                + "            catch(e2:Error)\n"
+                + "            {\n"
+                + "               trace(\"c2\");\n"
+                + "            }\n"
+                + "            finally\n"
+                + "            {\n"
+                + "               trace(\"f2\");\n"
+                + "            }\n"
+                + "         }\n");
+    }
+
+    @Test
+    public void testTryEndingWithThrowInsideFinally() throws Exception {
+        //like testTryInsideFinally, but the inner try ends with throw: its finally block,
+        //and the lookupswitch which reads the saved index, are reached only through
+        //exception edges
+        String pCode = String.join("\n", new String[]{
+            "ofs_t:",
+            "findpropstrict QName(PackageNamespace(\"\"),\"trace\")",
+            "pushstring \"t\"",
+            "callpropvoid QName(PackageNamespace(\"\"),\"trace\"), 1",
+            "ofs_te:",
+            "jump ofs_n",
+            "ofs_c:",
+            "getlocal0",
+            "pushscope",
+            "newcatch 0",
+            "dup",
+            "setlocal2",
+            "dup",
+            "pushscope",
+            "swap",
+            "setslot 1",
+            "findpropstrict QName(PackageNamespace(\"\"),\"trace\")",
+            "pushstring \"c\"",
+            "callpropvoid QName(PackageNamespace(\"\"),\"trace\"), 1",
+            "popscope",
+            "kill 2",
+            "ofs_n:",
+            "pushbyte -1",
+            "ofs_fe:",
+            "jump ofs_f",
+            "ofs_ft:",
+            "getlocal0",
+            "pushscope",
+            "newcatch 1",
+            "dup",
+            "setlocal2",
+            "pushscope",
+            "popscope",
+            "kill 2",
+            "coerce_a",
+            "setlocal3",
+            "pushbyte 0",
+            "jump ofs_f",
+            "label",
+            "pop",
+            "ofs_r:",
+            "label",
+            "getlocal3",
+            "kill 3",
+            "throw",
+            "ofs_f:",
+            "findpropstrict QName(PackageNamespace(\"\"),\"trace\")",
+            "pushstring \"f1\"",
+            "callpropvoid QName(PackageNamespace(\"\"),\"trace\"), 1",
+            "ofs_t2:",
+            "coerce_a",
+            "setlocal 4",
+            "findpropstrict QName(PackageNamespace(\"\"),\"Error\")",
+            "constructprop QName(PackageNamespace(\"\"),\"Error\"), 0",
+            "throw",
+            "ofs_t2e:",
+            "jump ofs_c2",
+            "ofs_c2:",
+            "getlocal0",
+            "pushscope",
+            "newcatch 2",
+            "dup",
+            "setlocal 5",
+            "dup",
+            "pushscope",
+            "swap",
+            "setslot 1",
+            "findpropstrict QName(PackageNamespace(\"\"),\"trace\")",
+            "pushstring \"c2\"",
+            "callpropvoid QName(PackageNamespace(\"\"),\"trace\"), 1",
+            "popscope",
+            "kill 5",
+            "ofs_n2:",
+            "pushbyte -1",
+            "ofs_f2e:",
+            "jump ofs_f2",
+            "ofs_f2t:",
+            "getlocal0",
+            "pushscope",
+            "newcatch 3",
+            "dup",
+            "setlocal 5",
+            "pushscope",
+            "popscope",
+            "kill 5",
+            "coerce_a",
+            "setlocal 6",
+            "pushbyte 0",
+            "jump ofs_f2",
+            "label",
+            "pop",
+            "ofs_r2:",
+            "label",
+            "getlocal 6",
+            "kill 6",
+            "throw",
+            "ofs_f2:",
+            "findpropstrict QName(PackageNamespace(\"\"),\"trace\")",
+            "pushstring \"f2\"",
+            "callpropvoid QName(PackageNamespace(\"\"),\"trace\"), 1",
+            "lookupswitch ofs_a2, [ofs_r2]",
+            "ofs_a2:",
+            "getlocal 4",
+            "convert_i",
+            "kill 4",
+            "lookupswitch ofs_a, [ofs_r]",
+            "ofs_a:",
+            "try from ofs_t to ofs_te target ofs_c type QName(PackageNamespace(\"\"),\"Error\") name QName(PackageNamespace(\"\"),\"e\") end",
+            "try from ofs_t to ofs_fe target ofs_ft type null name null end",
+            "try from ofs_t2 to ofs_t2e target ofs_c2 type QName(PackageNamespace(\"\"),\"Error\") name QName(PackageNamespace(\"\"),\"e2\") end",
+            "try from ofs_t2 to ofs_f2e target ofs_f2t type null name null end"
+        }) + "\n";
+        String res = decompilePCodeSource(pCode, false);
+        assertEquals(res, "         try\n"
+                + "         {\n"
+                + "            trace(\"t\");\n"
+                + "         }\n"
+                + "         catch(e:Error)\n"
+                + "         {\n"
+                + "            trace(\"c\");\n"
+                + "         }\n"
+                + "         finally\n"
+                + "         {\n"
+                + "            trace(\"f1\");\n"
+                + "            try\n"
+                + "            {\n"
+                + "               throw new Error();\n"
+                + "            }\n"
+                + "            catch(e2:Error)\n"
+                + "            {\n"
+                + "               trace(\"c2\");\n"
+                + "            }\n"
+                + "            finally\n"
+                + "            {\n"
+                + "               trace(\"f2\");\n"
+                + "            }\n"
+                + "         }\n");
+    }
+
+    @Test
     public void testRegExpLiteralIsNotComment() throws Exception {
         //as literals, new RegExp("") would be the comment // and new RegExp("*a")
         //the start of the comment /*; a trailing backslash would escape the closing /

@@ -388,6 +388,27 @@ public class AVM2Graph extends Graph {
                     int ip = foundIps.get(i);
                     if (avm2code.code.get(ip).definition instanceof LookupSwitchIns) {
                         switchPart = foundParts.get(i);
+                    } else if (avm2code.code.get(ip).definition instanceof SetLocalTypeIns) {
+                        //A try inside the finally block needs an empty stack: ASC saves the index
+                        //to a register (coerce_a, setlocal N) and the lookupswitch at the end
+                        //of the finally block reads it back (getlocal N, convert_i, kill N)
+                        int saveRegister = ((SetLocalTypeIns) avm2code.code.get(ip).definition).getRegisterId(avm2code.code.get(ip));
+                        //the inner try may end with throw, so the lookupswitch can be reachable
+                        //only through exception edges: search all parts after the save
+                        GraphPart savedSwitchPart = null;
+                        for (GraphPart p : allParts) {
+                            if (p.start > ip && (savedSwitchPart == null || p.start < savedSwitchPart.start) && isLookupSwitchWithGetLocal(saveRegister, p)) {
+                                savedSwitchPart = p;
+                            }
+                        }
+                        if (savedSwitchPart != null) {
+                            switchPart = savedSwitchPart;
+                            localData.finallyIndexSaveIps.add(ip);
+                            if (ip > 0 && (avm2code.code.get(ip - 1).definition instanceof CoerceAIns)) {
+                                localData.finallyIndexSaveIps.add(ip - 1);
+                            }
+                            break;
+                        }
                     } else if (avm2code.code.get(ip).definition instanceof PopIns) {
                         //In swftools try..finally, there is dup before lookupswitch and pop in its branches
                         GraphPart popPart = searchPart(ip, allParts);
@@ -863,17 +884,8 @@ public class AVM2Graph extends Graph {
             return null;
         }
         visited.add(part);
-        if (part.getHeight() >= 3) {
-            if (avm2code.code.get(part.end).definition instanceof LookupSwitchIns) {
-                if (avm2code.code.get(part.end - 1).definition instanceof ConvertIIns) {
-                    if (avm2code.code.get(part.end - 2).definition instanceof GetLocalTypeIns) {
-                        int getLocalRegId = ((GetLocalTypeIns) avm2code.code.get(part.end - 2).definition).getRegisterId(avm2code.code.get(part.end - 2));
-                        if (getLocalRegId == registerId) {
-                            return part;
-                        }
-                    }
-                }
-            }
+        if (isLookupSwitchWithGetLocal(registerId, part)) {
+            return part;
         }
         for (GraphPart n : part.nextParts) {
             GraphPart found = findLookupSwitchWithGetLocal(registerId, n, visited);
@@ -882,6 +894,38 @@ public class AVM2Graph extends Graph {
             }
         }
         return null;
+    }
+
+    /**
+     * Checks whether a part ends with getlocal N, convert_i, (kill N),
+     * lookupswitch.
+     *
+     * @param registerId Register ID
+     * @param part Part
+     * @return True if it does
+     */
+    private boolean isLookupSwitchWithGetLocal(int registerId, GraphPart part) {
+        if (part.start < 0 || part.end >= avm2code.code.size()) {
+            return false;
+        }
+        if (part.getHeight() >= 3) {
+            if (avm2code.code.get(part.end).definition instanceof LookupSwitchIns) {
+                int convertIp = part.end - 1;
+                //getlocal N, convert_i, kill N, lookupswitch
+                if ((avm2code.code.get(convertIp).definition instanceof KillIns) && part.getHeight() >= 4) {
+                    convertIp--;
+                }
+                if (avm2code.code.get(convertIp).definition instanceof ConvertIIns) {
+                    if (avm2code.code.get(convertIp - 1).definition instanceof GetLocalTypeIns) {
+                        int getLocalRegId = ((GetLocalTypeIns) avm2code.code.get(convertIp - 1).definition).getRegisterId(avm2code.code.get(convertIp - 1));
+                        if (getLocalRegId == registerId) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**
