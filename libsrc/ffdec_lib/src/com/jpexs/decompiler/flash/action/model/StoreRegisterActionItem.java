@@ -118,7 +118,7 @@ public class StoreRegisterActionItem extends ActionItem implements SetTypeAction
             value.toString(writer, localData);
         } else {
             HighlightData srcData = getSrcData();
-            srcData.localName = register.translate();
+            srcData.localName = register.translate(localData.as12GeneratedRegisterNames);
             srcData.regIndex = register.number;
 
             if (define) {
@@ -126,7 +126,7 @@ public class StoreRegisterActionItem extends ActionItem implements SetTypeAction
                 srcData.declaredType = DottedChain.ALL;
                 writer.append("var ");
             }
-            writer.append(IdentifiersDeobfuscation.printIdentifier(localData.swf, localData.usedDeobfuscations, false, register.translate()));
+            writer.append(IdentifiersDeobfuscation.printIdentifier(localData.swf, localData.usedDeobfuscations, false, register.translate(localData.as12GeneratedRegisterNames)));
 
             if (compoundOperator != null) {
                 writer.append(" ");
