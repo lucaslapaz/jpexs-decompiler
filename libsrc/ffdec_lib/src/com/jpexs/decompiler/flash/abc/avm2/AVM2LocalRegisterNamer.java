@@ -401,8 +401,9 @@ public class AVM2LocalRegisterNamer {
         public final boolean derived;
 
         /**
-         * Name of a sum or a difference when the name and the alternative are
-         * taken (xValue), after index and result, or null
+         * Name of an arithmetic operation made from all its terms, when the
+         * name and the alternative are taken (aPlus3PlusX), after index and
+         * result, or null
          */
         public final String fallback;
 
@@ -1074,10 +1075,11 @@ public class AVM2LocalRegisterNamer {
                 }
             //fallthrough
             case "+":
-                return sameQuantity(getOperandName(left, depth, false));
+                return getArithmeticName(operation, depth);
             case "*":
             case "/":
             case "%":
+                return getArithmeticName(operation, depth);
             case "&":
             case "|":
             case "^":
@@ -1114,18 +1116,116 @@ public class AVM2LocalRegisterNamer {
     }
 
     /**
-     * Name of a sum or a difference: a + b is still an a (x + offset is an x).
-     * When the name is in use, xValue: x2 would look like another x, and the
-     * name of the type says less.
+     * Name of an arithmetic operation: the name of the leftmost operand, and,
+     * for when it is in use, a name made from all the terms (a + 3 + x:
+     * aPlus3PlusX; this.x + this.parent.x: xPlusParentX). x2 would look like
+     * another x, and the name of the type says less.
      *
-     * @param name Name of the leftmost operand or null
+     * @param operation Operation
+     * @param depth Depth
      * @return Name or null
      */
-    private static Name sameQuantity(Name name) {
+    private Name getArithmeticName(BinaryOpItem operation, int depth) {
+        Name name = getOperandName(operation.leftSide, depth, false);
         if (name == null) {
             return null;
         }
-        return new Name(name.name, name.alternative, true, clean(name.name + "Value"));
+        return new Name(name.name, name.alternative, true, getTermsName(operation, depth));
+    }
+
+    /**
+     * Name made from the terms of a chain of operations of the same kind
+     * (a + 3 - x, a * b / 2), at most three terms, each one a name or a small
+     * whole number; at least one of them a name.
+     *
+     * @param operation Operation
+     * @param depth Depth
+     * @return Name or null
+     */
+    private String getTermsName(BinaryOpItem operation, int depth) {
+        String family = getOperatorFamily(operation.getOperator());
+        if (family == null) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        GraphTargetItem item = operation;
+        //a + b + c is (a + b) + c: from the right to the left
+        while ((item instanceof BinaryOpItem) && family.equals(getOperatorFamily(((BinaryOpItem) item).getOperator()))) {
+            BinaryOpItem op = (BinaryOpItem) item;
+            String term = getTermName(op.rightSide, depth);
+            if (term == null) {
+                return null;
+            }
+            parts.add(0, capitalize(term));
+            parts.add(0, getOperatorWord(op.getOperator()));
+            item = op.leftSide;
+        }
+        String first = getTermName(item, depth);
+        if (first == null || parts.size() > 4) {
+            return null;
+        }
+        boolean named = !Character.isDigit(first.charAt(0));
+        for (int i = 1; i < parts.size(); i += 2) {
+            named = named || !Character.isDigit(parts.get(i).charAt(0));
+        }
+        if (!named || Character.isDigit(first.charAt(0))) {
+            return null;
+        }
+        return clean(first + String.join("", parts));
+    }
+
+    /**
+     * Name of a term: the name of the operand (of a local too) or a small whole
+     * number.
+     *
+     * @param item Term
+     * @param depth Depth
+     * @return Name or null
+     */
+    private String getTermName(GraphTargetItem item, int depth) {
+        if (isLiteral(item)) {
+            Object value = unwrap(item).getResult();
+            if (value instanceof Number) {
+                double number = ((Number) value).doubleValue();
+                if (number >= 0 && number < 10000 && number == Math.floor(number)) {
+                    return String.valueOf((long) number);
+                }
+            }
+            return null;
+        }
+        if (item instanceof BinaryOpItem) {
+            return null;
+        }
+        Name name = getOperandName(item, depth, true);
+        return name == null ? null : name.name;
+    }
+
+    private static String getOperatorFamily(String operator) {
+        switch (operator) {
+            case "+":
+            case "add":
+            case "-":
+                return "+";
+            case "*":
+            case "/":
+            case "%":
+                return "*";
+        }
+        return null;
+    }
+
+    private static String getOperatorWord(String operator) {
+        switch (operator) {
+            case "-":
+                return "Minus";
+            case "*":
+                return "Times";
+            case "/":
+                return "Over";
+            case "%":
+                return "Mod";
+        }
+        return "Plus";
     }
 
     /**

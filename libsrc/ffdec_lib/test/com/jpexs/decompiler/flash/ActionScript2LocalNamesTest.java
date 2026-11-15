@@ -126,7 +126,7 @@ public class ActionScript2LocalNamesTest extends ActionScript2TestBase {
 
     @Test
     public void testSumWhenTheNameIsInUse() throws Exception {
-        //x of the frame is read in the function: the local is xValue, not x (it would hide it), x2 or value
+        //x of the frame is read in the function: the local is named from the terms, not x (it would hide it), x2 or value
         SWF copy = new SWF(new BufferedInputStream(new FileInputStream("testdata/as2/as2.swf")), false);
         DoActionTag doa = null;
         for (Tag t : copy.getTags()) {
@@ -160,8 +160,8 @@ public class ActionScript2LocalNamesTest extends ActionScript2TestBase {
         Action.actionsToSource(new HashMap<>(), doa, doa.getActions(), "", writer, Utf8Helper.charsetName);
         writer.finishHilights();
         String result = writer.toString();
-        org.testng.Assert.assertTrue(result.contains("var xValue = this._x + this._parent._x;"), result);
-        org.testng.Assert.assertTrue(result.contains("trace(xValue + x);"), result);
+        org.testng.Assert.assertTrue(result.contains("var xPlusParentX = this._x + this._parent._x;"), result);
+        org.testng.Assert.assertTrue(result.contains("trace(xPlusParentX + x);"), result);
     }
 
     @Test
@@ -301,7 +301,7 @@ public class ActionScript2LocalNamesTest extends ActionScript2TestBase {
                 + "{\r\n"
                 + "var func = function(a, x)\r\n"
                 + "{\r\n"
-                + "var aValue = a + 3 + x;\r\n"
+                + "var aPlus3PlusX = a + 3 + x;\r\n"
                 + "var func = function()\r\n"
                 + "{\r\n"
                 + "var result = a + 2;\r\n"
