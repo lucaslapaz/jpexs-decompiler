@@ -29,6 +29,7 @@ import com.jpexs.decompiler.flash.abc.avm2.model.ConstructAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.ConstructPropAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.ConvertAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.DecLocalAVM2Item;
+import com.jpexs.decompiler.flash.abc.avm2.model.FindPropertyAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.FullMultinameAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.GetLexAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.GetPropertyAVM2Item;
@@ -63,6 +64,7 @@ import com.jpexs.decompiler.flash.abc.types.MethodInfo;
 import com.jpexs.decompiler.flash.abc.types.Multiname;
 import com.jpexs.decompiler.flash.abc.types.traits.Trait;
 import com.jpexs.decompiler.flash.abc.types.traits.TraitMethodGetterSetter;
+import com.jpexs.decompiler.flash.abc.types.traits.TraitSlotConst;
 import com.jpexs.decompiler.flash.configuration.Configuration;
 import com.jpexs.decompiler.graph.AbstractGraphTargetRecursiveVisitor;
 import com.jpexs.decompiler.graph.Block;
@@ -86,6 +88,7 @@ import java.util.Stack;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.WeakHashMap;
+import java.util.regex.Pattern;
 
 /**
  * Names local registers which have no name (_loc1_, param1...) from the context
@@ -180,6 +183,32 @@ public class AVM2LocalRegisterNamer {
 
     private final Map<Integer, String> assignedNames = new TreeMap<>();
 
+    /**
+     * Activation slots with the name of a register (_loc2_, param1) by slot id:
+     * code compiled again from decompiled code (the FFDec compiler keeps the
+     * names, and puts the locals to slots when the method needs an
+     * activation).
+     */
+    private final Map<Integer, String> candidateSlots = new LinkedHashMap<>();
+
+    private final Map<Integer, String> slotTypeNames = new LinkedHashMap<>();
+
+    private final Map<String, String> slotNameOverrides = new LinkedHashMap<>();
+
+    /**
+     * Key of a slot in the maps of registers.
+     *
+     * @param slotId Slot id
+     * @return Key
+     */
+    private static int slotKey(int slotId) {
+        return -1000 - slotId;
+    }
+
+    private static boolean isSlotKey(int key) {
+        return key <= -1000;
+    }
+
     private final Map<Integer, List<String>> storeNames = new LinkedHashMap<>();
 
     private final Map<Integer, GraphTargetItem> types = new LinkedHashMap<>();
@@ -212,6 +241,7 @@ public class AVM2LocalRegisterNamer {
      */
     public Map<Integer, String> name(List<GraphTargetItem> items) {
         Map<Integer, String> ret = assignedNames;
+        collectCandidateSlots();
         walkStatements(items, 0);
         if (hasWith) {
             return ret;
@@ -237,6 +267,39 @@ public class AVM2LocalRegisterNamer {
                     slotNames.add(slotName);
                 }
             }
+        }
+
+        //slots with a register name: a parameter copied to slot paramN gets the name of the slot
+        for (Map.Entry<Integer, String> slot : candidateSlots.entrySet()) {
+            int key = slotKey(slot.getKey());
+            String slotName = slot.getValue();
+            usedNames.remove(slotName);
+            String name = null;
+            if (slotName.matches("param[0-9]+")) {
+                int param = Integer.parseInt(slotName.substring(5));
+                if (param >= 1 && param <= paramCount && ("param" + param).equals(existingNames.get(param)) && !realParamNames) {
+                    String typeName = getMultinameName(methodInfo.param_types[param - 1]);
+                    if ((trait instanceof TraitMethodGetterSetter) && ((TraitMethodGetterSetter) trait).kindType == Trait.TRAIT_SETTER) {
+                        name = unique(Name.of("value"));
+                    } else if (typeName != null && typeName.endsWith("Event")) {
+                        name = unique(Name.of("event"));
+                    } else {
+                        name = nameLocal(key, true);
+                        //a parameter which is returned is not a result
+                        if (name.replaceAll("[0-9]+$", "").equals("result")) {
+                            usedNames.remove(name);
+                            String typeBase = getTypeBaseName(typeName);
+                            name = unique(Name.of(typeBase == null ? "value" : typeBase));
+                        }
+                    }
+                    ret.put(param, name);
+                }
+            }
+            if (name == null) {
+                name = nameLocal(key, true);
+            }
+            slotNameOverrides.put(slotName, name);
+            usedNames.add(name);
         }
 
         for (int i = 1; i <= paramCount; i++) {
@@ -270,7 +333,50 @@ public class AVM2LocalRegisterNamer {
                 }
             }
         }
-        return ret;
+        Map<Integer, String> registerNames = new TreeMap<>();
+        for (Map.Entry<Integer, String> entry : ret.entrySet()) {
+            if (entry.getKey() >= 0) {
+                registerNames.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return registerNames;
+    }
+
+    /**
+     * Gets new names of the activation slots which had the name of a
+     * register. Valid after {@link #name(java.util.List)}.
+     *
+     * @return Map from slot name to new name
+     */
+    public Map<String, String> getSlotNameOverrides() {
+        return slotNameOverrides;
+    }
+
+    private void collectCandidateSlots() {
+        if (body.traits == null) {
+            return;
+        }
+        //inner functions read the slots by name
+        for (AVM2Instruction ins : body.getCode().code) {
+            if (ins.definition.instructionCode == AVM2Instructions.NewFunction) {
+                return;
+            }
+        }
+        String registerPattern = Pattern.quote(Configuration.registerNameFormat.get()).replace("%d", "\\E[0-9]+\\Q");
+        for (Trait t : body.traits.traits) {
+            if (!(t instanceof TraitSlotConst)) {
+                continue;
+            }
+            String slotName = getMultinameName(t.name_index);
+            if (slotName == null) {
+                continue;
+            }
+            if (slotName.matches("param[0-9]+") || slotName.matches(registerPattern)) {
+                TraitSlotConst slot = (TraitSlotConst) t;
+                candidateSlots.put(slot.slot_id, slotName);
+                slotTypeNames.put(slot.slot_id, getMultinameName(slot.type_index));
+            }
+        }
     }
 
     /**
@@ -398,6 +504,9 @@ public class AVM2LocalRegisterNamer {
         }
         if (name == null) {
             name = Name.of(getTypeBaseName(type));
+        }
+        if (name == null && isSlotKey(reg)) {
+            name = Name.of(getTypeBaseName(slotTypeNames.get(-1000 - reg)));
         }
         if (name == null) {
             name = Name.of("value");
@@ -581,9 +690,19 @@ public class AVM2LocalRegisterNamer {
         }
         if (item instanceof SetSlotAVM2Item) {
             SetSlotAVM2Item setSlot = (SetSlotAVM2Item) item;
-            if (setSlot.compoundOperator == null && setSlot.slotName != null) {
+            int slot = getRegister(setSlot);
+            if (slot != -1) {
+                //a local in a slot
+                registers.add(slot);
+                if (setSlot.compoundOperator == null && setSlot.value != null) {
+                    add(valueItems, slot, setSlot.value);
+                }
+            } else if (setSlot.compoundOperator == null && setSlot.slotName != null) {
                 addStoreName(setSlot.value, getMultinameName(setSlot.slotName));
             }
+        }
+        if ((item instanceof GetSlotAVM2Item) && getRegister(item) != -1) {
+            registers.add(getRegister(item));
         }
         if (item instanceof ReturnValueAVM2Item) {
             int reg = getRegister(unwrap(item.value));
@@ -609,9 +728,15 @@ public class AVM2LocalRegisterNamer {
         }
     }
 
-    private static int getRegister(GraphTargetItem item) {
+    private int getRegister(GraphTargetItem item) {
         if (item instanceof DeclarationAVM2Item) {
             item = ((DeclarationAVM2Item) item).assignment;
+        }
+        if ((item instanceof SetSlotAVM2Item) && candidateSlots.containsKey(((SetSlotAVM2Item) item).slotIndex)) {
+            return slotKey(((SetSlotAVM2Item) item).slotIndex);
+        }
+        if ((item instanceof GetSlotAVM2Item) && candidateSlots.containsKey(((GetSlotAVM2Item) item).slotIndex)) {
+            return slotKey(((GetSlotAVM2Item) item).slotIndex);
         }
         if (item instanceof LocalRegAVM2Item) {
             return ((LocalRegAVM2Item) item).regIndex;
@@ -629,7 +754,7 @@ public class AVM2LocalRegisterNamer {
      * @param item Statement
      * @return Register or -1
      */
-    private static int getLoopCounter(GraphTargetItem item) {
+    private int getLoopCounter(GraphTargetItem item) {
         List<GraphTargetItem> step;
         GraphTargetItem condition;
         if (item instanceof ForItem) {
@@ -661,7 +786,7 @@ public class AVM2LocalRegisterNamer {
         return -1;
     }
 
-    private static int getIncrementedRegister(GraphTargetItem item) {
+    private int getIncrementedRegister(GraphTargetItem item) {
         if (item instanceof IncLocalAVM2Item) {
             return ((IncLocalAVM2Item) item).regIndex;
         }
@@ -747,6 +872,16 @@ public class AVM2LocalRegisterNamer {
      */
     private Name getOperandName(GraphTargetItem item, int depth, boolean locals) {
         item = unwrap(item);
+        if ((item instanceof GetSlotAVM2Item) && getRegister(item) != -1) {
+            if (!locals) {
+                return null;
+            }
+            String name = assignedNames.get(getRegister(item));
+            if (name == null) {
+                name = slotNameOverrides.get(candidateSlots.get(-1000 - getRegister(item)));
+            }
+            return isStrong(name) ? Name.of(name) : null;
+        }
         if (item instanceof LocalRegAVM2Item) {
             if (!locals) {
                 return null;
@@ -826,6 +961,9 @@ public class AVM2LocalRegisterNamer {
             return Name.of(clean(getMultinameName(((GetLexAVM2Item) value).propertyName)));
         }
         if (value instanceof GetSlotAVM2Item) {
+            if (getRegister(value) != -1) {
+                return null;
+            }
             return Name.of(clean(getMultinameName(((GetSlotAVM2Item) value).slotName)));
         }
         if (value instanceof CallPropertyAVM2Item) {
@@ -984,7 +1122,8 @@ public class AVM2LocalRegisterNamer {
         if (name == null || name.isEmpty()) {
             return null;
         }
-        if (name.equals("int") || name.equals("uint") || Character.isUpperCase(name.charAt(0))) {
+        boolean global = receiver == null || (receiver instanceof FindPropertyAVM2Item) || (receiver instanceof GetLexAVM2Item);
+        if (name.equals("int") || name.equals("uint") || (global && Character.isUpperCase(name.charAt(0)))) {
             //String(x), int(x), MyClass(x) are casts
             if (arguments != null && arguments.size() == 1) {
                 Name argumentName = getOperandName(arguments.get(0), depth);
@@ -996,6 +1135,9 @@ public class AVM2LocalRegisterNamer {
             if (name.equals("int") || name.equals("uint")) {
                 return null;
             }
+            name = Character.toLowerCase(name.charAt(0)) + name.substring(1);
+        } else if (Character.isUpperCase(name.charAt(0))) {
+            //this.Trouver_Jeu(x) is a method
             name = Character.toLowerCase(name.charAt(0)) + name.substring(1);
         }
         if (receiver instanceof GetLexAVM2Item && "Math".equals(getMultinameName(((GetLexAVM2Item) receiver).propertyName))) {

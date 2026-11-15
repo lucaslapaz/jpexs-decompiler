@@ -156,6 +156,13 @@ public final class MethodBody implements Cloneable {
     public transient Map<Integer, String> generatedLocalRegNames;
 
     /**
+     * New names of the activation slots which had the name of a register,
+     * by the last conversion, null when there are none
+     */
+    @Internal
+    public transient Map<String, String> generatedSlotNames;
+
+    /**
      * ABC file
      */
     @Internal
@@ -501,12 +508,17 @@ public final class MethodBody implements Cloneable {
                                 convertedItems1 = converted.getCode().toGraphTargetItems(usedDeobfuscations, swfVersion, callStack, abcIndex, convertData.thisHasDefaultToPrimitive, convertData, path, methodIndex, isStatic, scriptIndex, classIndex, abc, converted, localRegNames, scopeStack, initializerType, fullyQualifiedNames, initTraits, 0, new HashMap<>(), initTraitClasses); //converted.getCode().visitCode(converted)
                             }
                             if (Configuration.as3LocalNamesFromContext.get()) {
-                                generatedLocalRegNames = new AVM2LocalRegisterNamer(abc, converted, trait, localRegNames).name(convertedItems1);
+                                AVM2LocalRegisterNamer namer = new AVM2LocalRegisterNamer(abc, converted, trait, localRegNames);
+                                generatedLocalRegNames = namer.name(convertedItems1);
+                                generatedSlotNames = namer.getSlotNameOverrides().isEmpty() ? null : namer.getSlotNameOverrides();
                             } else {
                                 generatedLocalRegNames = null;
+                                generatedSlotNames = null;
                             }
                             try (Statistics s = new Statistics("Graph.graphToString")) {
-                                Graph.graphToString(convertedItems1, writer, LocalData.create(callStack, abcIndex, abc, getLocalRegNamesWithGenerated(localRegNames), fullyQualifiedNames, seenMethods, exportMode, swfVersion, usedDeobfuscations, classIndex));
+                                LocalData printLocalData = LocalData.create(callStack, abcIndex, abc, getLocalRegNamesWithGenerated(localRegNames), fullyQualifiedNames, seenMethods, exportMode, swfVersion, usedDeobfuscations, classIndex);
+                                printLocalData.as3SlotNameOverrides = generatedSlotNames;
+                                Graph.graphToString(convertedItems1, writer, printLocalData);
                             }
                             convertedItems = convertedItems1;
                         }
@@ -600,7 +612,9 @@ public final class MethodBody implements Cloneable {
                         fullyQualifiedNames2.remove(tname);
                     }
                     
-                    Graph.graphToString(convertedItems, writer, LocalData.create(callStack, abcIndex, abc, getLocalRegNamesWithGenerated(localRegNames), fullyQualifiedNames2, seenMethods, exportMode, swfVersion, usedDeobfuscations, classIndex));
+                    LocalData printLocalData = LocalData.create(callStack, abcIndex, abc, getLocalRegNamesWithGenerated(localRegNames), fullyQualifiedNames2, seenMethods, exportMode, swfVersion, usedDeobfuscations, classIndex);
+                    printLocalData.as3SlotNameOverrides = generatedSlotNames;
+                    Graph.graphToString(convertedItems, writer, printLocalData);
                     //writer.endMethod();
                 } else if (convertException instanceof TimeoutException) {
                     // exception was logged in convert method
@@ -751,6 +765,7 @@ public final class MethodBody implements Cloneable {
             ret.convertedItems = null;
             ret.convertException = null;
             ret.generatedLocalRegNames = null;
+            ret.generatedSlotNames = null;
 
             return ret;
         } catch (CloneNotSupportedException ex) {
