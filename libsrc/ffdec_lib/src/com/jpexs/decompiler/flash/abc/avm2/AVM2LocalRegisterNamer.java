@@ -199,8 +199,20 @@ public class AVM2LocalRegisterNamer {
         boolean realParamNames = methodInfo.flagHas_paramnames() && Configuration.paramNamesEnable.get();
         int firstLocal = paramCount + 1 + (methodInfo.flagNeed_arguments() ? 1 : 0) + (methodInfo.flagNeed_rest() ? 1 : 0);
 
+        //A parameter copied to an activation slot of the same name is that slot:
+        //the decompiler leaves the copy out, so the name must stay
+        Set<String> slotNames = new HashSet<>();
+        if (body.traits != null) {
+            for (Trait t : body.traits.traits) {
+                String slotName = getMultinameName(t.name_index);
+                if (slotName != null) {
+                    slotNames.add(slotName);
+                }
+            }
+        }
+
         for (int i = 1; i <= paramCount; i++) {
-            if (realParamNames || !("param" + i).equals(existingNames.get(i))) {
+            if (realParamNames || !("param" + i).equals(existingNames.get(i)) || slotNames.contains("param" + i)) {
                 continue;
             }
             usedNames.remove("param" + i);
@@ -210,7 +222,7 @@ public class AVM2LocalRegisterNamer {
         }
 
         for (int reg : registers) {
-            if (reg < firstLocal || existingNames.containsKey(reg)) {
+            if (reg < firstLocal || existingNames.containsKey(reg) || slotNames.contains(String.format(Configuration.registerNameFormat.get(), reg))) {
                 continue;
             }
             String name = nameLocal(reg);
