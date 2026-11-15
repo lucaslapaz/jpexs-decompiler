@@ -311,6 +311,21 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
         updateLinksLabel();
     }
 
+    /**
+     * Checks whether the selected library differs from the library stored for
+     * the openable. Showing an ABC of another openable selects its stored
+     * library in the combobox, which is not a change of the library: reacting
+     * to it clears the script cache of the SWF and the script packs in the tree
+     * no longer match the ones returned by SWF.getAS3Packs (search results).
+     *
+     * @param openable Openable
+     * @param selectedLibrary Selected library
+     * @return True when the library was changed
+     */
+    public static boolean isLibraryChanged(Openable openable, int selectedLibrary) {
+        return selectedLibrary != Main.getSwfLibrary(openable);
+    }
+
     public SWF getSwf() {
         return abc == null ? null : abc.getSwf();
     }
@@ -1556,8 +1571,15 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
         libraryComboBox.addItemListener(new ItemListener() {
             @Override
             public void itemStateChanged(ItemEvent e) {
+                if (e.getStateChange() != ItemEvent.SELECTED) {
+                    return;
+                }
                 SWF swf = getSwf();
                 if (swf == null) {
+                    return;
+                }
+                if (!isLibraryChanged(getOpenable(), libraryComboBox.getSelectedIndex())) {
+                    //setAbc only shows the stored library of the openable
                     return;
                 }
                 SwfSpecificCustomConfiguration conf = Configuration.getOrCreateSwfSpecificCustomConfiguration(swf.getShortPathTitle());

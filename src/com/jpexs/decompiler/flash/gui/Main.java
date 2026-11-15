@@ -313,13 +313,22 @@ public class Main {
     }
 
     public static boolean isSwfAir(Openable openable) {
+        return getSwfLibrary(openable) == SWF.LIBRARY_AIR;
+    }
+
+    /**
+     * Gets the library (SWF.LIBRARY_AIR or SWF.LIBRARY_FLASH) stored for the openable.
+     *
+     * @param openable Openable
+     * @return Library, SWF.LIBRARY_FLASH when none is stored
+     */
+    public static int getSwfLibrary(Openable openable) {
         SwfSpecificCustomConfiguration conf = Configuration.getSwfSpecificCustomConfiguration(openable.getShortPathTitle());
         if (conf != null) {
             String libraryAsStr = conf.getCustomData(CustomConfigurationKeys.KEY_LIBRARY, "" + SWF.LIBRARY_FLASH);
-            int libraryAsInt = Integer.parseInt(libraryAsStr);
-            return libraryAsInt == SWF.LIBRARY_AIR;
+            return Integer.parseInt(libraryAsStr);
         }
-        return false;
+        return SWF.LIBRARY_FLASH;
     }
 
     //This method makes file watcher to shut up during our own file saving
