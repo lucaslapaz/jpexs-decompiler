@@ -66,6 +66,7 @@ public abstract class ActionScript3DecompileTestBase extends ActionScriptTestBas
         
         Configuration.as3QNameObfuscatedPropsInSquareBrackets.set(true);
         Configuration.autoDeobfuscateIdentifiers.set(false);
+        Configuration.as3LocalDeclarationsAtFirstUse.set(false);
 
     }
 
