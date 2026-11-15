@@ -27,6 +27,7 @@ import com.jpexs.decompiler.flash.abc.avm2.model.NullAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.SetLocalAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.SetPropertyAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.ThisAVM2Item;
+import com.jpexs.decompiler.flash.abc.avm2.model.operations.AddAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.operations.ModuloAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.operations.MultiplyAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.operations.NeqAVM2Item;
@@ -43,6 +44,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -132,6 +134,21 @@ public class AVM2LocalRegisterNamerContextTest {
         Map<Integer, String> names = name(items);
         assertEquals(names.get(1), "speed");
         assertEquals(names.get(2), "enemySpeed", "the owner instead of speed2");
+    }
+
+    @Test
+    public void testSumWhenTheNameIsInUse() {
+        List<GraphTargetItem> items = new ArrayList<>();
+        items.add(set(1, property("x")));
+        //x + offset is still an x: xValue, not x2 and not a name from the type
+        items.add(set(2, new AddAVM2Item(null, null, property("x"), property("parent", "x"))));
+        //x * 2 is another quantity: no name from x
+        items.add(set(3, new MultiplyAVM2Item(null, null, property("x"), integer(2))));
+        Map<Integer, String> names = name(items);
+        assertEquals(names.get(1), "x");
+        assertEquals(names.get(2), "xValue");
+        assertNotEquals(names.get(3), "xValue2");
+        assertFalse(names.get(3).startsWith("x"), names.get(3));
     }
 
     @Test
