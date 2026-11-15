@@ -1220,6 +1220,10 @@ public final class Configuration {
     @ConfigurationDefaultBoolean(true)
     @ConfigurationCategory("script")
     public static ConfigurationItem<Boolean> as3LocalNamesFromContext = null;
+
+    @ConfigurationDefaultBoolean(true)
+    @ConfigurationCategory("script")
+    public static ConfigurationItem<Boolean> as12LocalNamesFromContext = null;
     
     @ConfigurationDefaultBoolean(true)
     @ConfigurationCategory("export")

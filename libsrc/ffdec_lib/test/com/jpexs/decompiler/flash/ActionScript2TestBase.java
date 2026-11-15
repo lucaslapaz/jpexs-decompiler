@@ -16,9 +16,11 @@
  */
 package com.jpexs.decompiler.flash;
 
+import com.jpexs.decompiler.flash.configuration.Configuration;
 import com.jpexs.decompiler.flash.tags.DoActionTag;
 import com.jpexs.decompiler.flash.tags.DoInitActionTag;
 import com.jpexs.decompiler.flash.tags.Tag;
+import org.testng.annotations.BeforeClass;
 
 /**
  *
@@ -27,6 +29,14 @@ import com.jpexs.decompiler.flash.tags.Tag;
 public class ActionScript2TestBase extends ActionScriptTestBase {
 
     protected SWF swf;
+
+    /**
+     * The expected results use the register names (_loc1_).
+     */
+    @BeforeClass
+    public void initRegisterNames() {
+        Configuration.as12LocalNamesFromContext.set(false);
+    }
 
     protected DoActionTag getFirstActionTag() {
         for (Tag t : swf.getTags()) {

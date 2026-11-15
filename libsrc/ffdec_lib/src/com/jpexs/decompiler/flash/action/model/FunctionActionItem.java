@@ -33,6 +33,7 @@ import com.jpexs.decompiler.flash.action.swf5.ActionStackSwap;
 import com.jpexs.decompiler.flash.action.swf5.ActionStoreRegister;
 import com.jpexs.decompiler.flash.action.swf7.ActionDefineFunction2;
 import com.jpexs.decompiler.flash.action.swf7.ActionTry;
+import com.jpexs.decompiler.flash.action.ActionLocalRegisterNamer;
 import com.jpexs.decompiler.flash.configuration.Configuration;
 import com.jpexs.decompiler.flash.helpers.GraphTextWriter;
 import com.jpexs.decompiler.flash.helpers.hilight.HighlightData;
@@ -284,6 +285,13 @@ public class FunctionActionItem extends ActionItem {
         writer.spaceBeforeCallParenthesis(paramNames.size());
         writer.append("(");
 
+        Map<Integer, String> previousGeneratedNames = localData.as12GeneratedRegisterNames;
+        Map<Integer, String> generatedNames = null;
+        if (Configuration.as12LocalNamesFromContext.get()) {
+            generatedNames = new ActionLocalRegisterNamer(this, localData.swf == null ? 10 : localData.swf.version).name();
+        }
+        localData.as12GeneratedRegisterNames = generatedNames;
+
         Map<String, Integer> n2r = new HashMap<>();
         for (int r : regNames.keySet()) {
             n2r.put(regNames.get(r), r);
@@ -296,9 +304,9 @@ public class FunctionActionItem extends ActionItem {
             String pname = paramNames.get(p);
             if (pname == null || pname.isEmpty()) {
                 if (paramRegisters != null) {
-                    pname = new RegisterNumber(paramRegisters.get(p)).translate();
+                    pname = new RegisterNumber(paramRegisters.get(p)).translate(generatedNames);
                 } else {
-                    pname = new RegisterNumber(regStart + p).translate();
+                    pname = new RegisterNumber(regStart + p).translate(generatedNames);
                 }
             }
             HighlightData d = getSrcData();
@@ -324,6 +332,7 @@ public class FunctionActionItem extends ActionItem {
             Graph.graphToString(actions, writer, localData);
         } finally {
             localData.as2ClassMemberScope = previousScope;
+            localData.as12GeneratedRegisterNames = previousGeneratedNames;
         }
 
         writer.endBlock();

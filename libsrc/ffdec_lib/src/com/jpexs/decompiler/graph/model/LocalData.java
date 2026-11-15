@@ -78,6 +78,12 @@ public class LocalData {
     public HashMap<Integer, String> localRegNames;
 
     /**
+     * Names generated for AS1/2 registers without name of the function being
+     * written (as12LocalNamesFromContext), or null
+     */
+    public java.util.Map<Integer, String> as12GeneratedRegisterNames;
+
+    /**
      * Fully qualified names
      */
     public List<DottedChain> fullyQualifiedNames;

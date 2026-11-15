@@ -463,7 +463,7 @@ public class AVM2LocalRegisterNamer {
      * @param name Name
      * @return True if it does
      */
-    private static boolean isStrong(String name) {
+    public static boolean isStrong(String name) {
         if (name == null) {
             return false;
         }
@@ -1146,7 +1146,7 @@ public class AVM2LocalRegisterNamer {
         return getTypeBaseName(((TypeItem) type).fullTypeName.getLast());
     }
 
-    static String getTypeBaseName(String typeName) {
+    public static String getTypeBaseName(String typeName) {
         if (typeName == null || typeName.isEmpty() || "*".equals(typeName)) {
             return null;
         }

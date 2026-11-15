@@ -116,6 +116,19 @@ public class RegisterNumber implements Serializable {
      *
      * @return Translated name
      */
+    /**
+     * Translates to name, with names generated for registers without one.
+     *
+     * @param generatedNames Generated names by register number or null
+     * @return Name
+     */
+    public String translate(java.util.Map<Integer, String> generatedNames) {
+        if ((name == null || name.isEmpty()) && generatedNames != null && generatedNames.containsKey(number)) {
+            return generatedNames.get(number);
+        }
+        return translate();
+    }
+
     public String translate() {
         if (name == null || name.isEmpty()) {
             return String.format(Configuration.registerNameFormat.get(), number);
