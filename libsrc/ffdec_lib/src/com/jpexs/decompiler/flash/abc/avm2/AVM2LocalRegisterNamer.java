@@ -400,10 +400,21 @@ public class AVM2LocalRegisterNamer {
          */
         public final boolean derived;
 
+        /**
+         * Name of a sum or a difference when the name and the alternative are
+         * taken (xValue), after index and result, or null
+         */
+        public final String fallback;
+
         public Name(String name, String alternative, boolean derived) {
+            this(name, alternative, derived, null);
+        }
+
+        public Name(String name, String alternative, boolean derived, String fallback) {
             this.name = name;
             this.alternative = alternative;
             this.derived = derived;
+            this.fallback = fallback;
         }
 
         public static Name of(String name) {
@@ -411,7 +422,7 @@ public class AVM2LocalRegisterNamer {
         }
 
         public Name derive() {
-            return new Name(name, alternative, true);
+            return new Name(name, alternative, true, fallback);
         }
     }
 
@@ -501,6 +512,9 @@ public class AVM2LocalRegisterNamer {
             name = Name.of(stringType ? "key" : "index");
         } else if (returned.contains(reg)) {
             name = Name.of("result");
+        }
+        if (name == null && valueName != null && valueName.fallback != null && !usedNames.contains(valueName.fallback)) {
+            return valueName.fallback;
         }
         if (name == null) {
             name = Name.of(getTypeBaseName(type));
@@ -1060,6 +1074,7 @@ public class AVM2LocalRegisterNamer {
                 }
             //fallthrough
             case "+":
+                return sameQuantity(getOperandName(left, depth, false));
             case "*":
             case "/":
             case "%":
@@ -1096,6 +1111,21 @@ public class AVM2LocalRegisterNamer {
                 return prefixed("is", getOperandName(left, depth));
         }
         return null;
+    }
+
+    /**
+     * Name of a sum or a difference: a + b is still an a (x + offset is an x).
+     * When the name is in use, xValue: x2 would look like another x, and the
+     * name of the type says less.
+     *
+     * @param name Name of the leftmost operand or null
+     * @return Name or null
+     */
+    private static Name sameQuantity(Name name) {
+        if (name == null) {
+            return null;
+        }
+        return new Name(name.name, name.alternative, true, clean(name.name + "Value"));
     }
 
     /**

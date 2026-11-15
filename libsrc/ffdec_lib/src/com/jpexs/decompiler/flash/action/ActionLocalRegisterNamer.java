@@ -154,10 +154,21 @@ public class ActionLocalRegisterNamer {
 
         public final boolean derived;
 
+        /**
+         * Name of a sum or a difference when the name and the alternative are
+         * taken (xValue), after index and result, or null
+         */
+        public final String fallback;
+
         public Name(String name, String alternative, boolean derived) {
+            this(name, alternative, derived, null);
+        }
+
+        public Name(String name, String alternative, boolean derived, String fallback) {
             this.name = name;
             this.alternative = alternative;
             this.derived = derived;
+            this.fallback = fallback;
         }
 
         public static Name of(String name) {
@@ -165,7 +176,7 @@ public class ActionLocalRegisterNamer {
         }
 
         public Name derive() {
-            return new Name(name, alternative, true);
+            return new Name(name, alternative, true, fallback);
         }
     }
 
@@ -277,6 +288,8 @@ public class ActionLocalRegisterNamer {
             name = Name.of("index");
         } else if (returned.contains(reg)) {
             name = Name.of("result");
+        } else if (valueName != null && valueName.fallback != null && !isUsed(valueName.fallback)) {
+            return valueName.fallback;
         } else {
             name = Name.of("value");
         }
@@ -805,6 +818,21 @@ public class ActionLocalRegisterNamer {
         return null;
     }
 
+    /**
+     * Name of a sum or a difference: a + b is still an a (x + offset is an x).
+     * When the name is in use, xValue: x2 would look like another x, and the
+     * name of the type says less.
+     *
+     * @param name Name of the leftmost operand or null
+     * @return Name or null
+     */
+    private static Name sameQuantity(Name name) {
+        if (name == null) {
+            return null;
+        }
+        return new Name(name.name, name.alternative, true, clean(name.name + "Value"));
+    }
+
     private Name getOperationName(BinaryOpItem operation, int depth) {
         String operator = operation.getOperator();
         GraphTargetItem left = operation.leftSide;
@@ -818,6 +846,7 @@ public class ActionLocalRegisterNamer {
             //fallthrough
             case "+":
             case "add":
+                return sameQuantity(getOperandName(left, depth, false));
             case "*":
             case "/":
             case "%":
