@@ -84,6 +84,12 @@ public class LocalData {
     public java.util.Map<Integer, String> as12GeneratedRegisterNames;
 
     /**
+     * New names of AS3 activation slots which had the name of a register
+     * (_loc2_) in the method being written, or null
+     */
+    public java.util.Map<String, String> as3SlotNameOverrides;
+
+    /**
      * Fully qualified names
      */
     public List<DottedChain> fullyQualifiedNames;

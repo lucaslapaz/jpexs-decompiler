@@ -151,7 +151,12 @@ public class SetSlotAVM2Item extends AVM2Item implements SetTypeAVM2Item, Assign
         if (slotName == null) {
             return slotObject.toString(localData) + ".§§slot[" + slotIndex + "]";
         }
-        return slotName.getName(localData.usedDeobfuscations, localData.abc, localData.constantsAvm2, localData.fullyQualifiedNames, false, true);
+        String name = slotName.getName(localData.usedDeobfuscations, localData.abc, localData.constantsAvm2, localData.fullyQualifiedNames, false, true);
+        if (localData.as3SlotNameOverrides != null && localData.as3SlotNameOverrides.containsKey(name)) {
+            //an activation slot with the name of a register (as3LocalNamesFromContext)
+            return localData.as3SlotNameOverrides.get(name);
+        }
+        return name;
     }
 
     /**

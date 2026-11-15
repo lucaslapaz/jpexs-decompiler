@@ -20,6 +20,7 @@ import com.jpexs.decompiler.flash.IdentifiersDeobfuscation;
 import com.jpexs.decompiler.flash.abc.avm2.instructions.SetTypeIns;
 import com.jpexs.decompiler.flash.abc.avm2.model.AVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.FullMultinameAVM2Item;
+import com.jpexs.decompiler.flash.abc.avm2.model.GetLexAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.GetSlotAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.LocalRegAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.SetLocalAVM2Item;
@@ -188,7 +189,17 @@ public class DeclarationAVM2Item extends AVM2Item {
         }
 
         writer.append("var ");
-        assignment.toString(writer, localData);
+        String overriddenName = null;
+        if ((assignment instanceof GetLexAVM2Item) && localData.as3SlotNameOverrides != null) {
+            //declaration of an activation slot with the name of a register (as3LocalNamesFromContext)
+            String slotName = ((GetLexAVM2Item) assignment).propertyName.getName(localData.usedDeobfuscations, localData.abc, localData.constantsAvm2, localData.fullyQualifiedNames, false, true);
+            overriddenName = localData.as3SlotNameOverrides.get(slotName);
+        }
+        if (overriddenName != null) {
+            writer.append(overriddenName);
+        } else {
+            assignment.toString(writer, localData);
+        }
         writer.append(":");
 
         type.appendTry(writer, localData);
