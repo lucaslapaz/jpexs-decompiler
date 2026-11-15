@@ -359,6 +359,9 @@ public class MethodInfo {
             } else if ((paramNames.length > i) && (paramNames[i] != 0) && Configuration.paramNamesEnable.get()) {
                 pdata.localName = constants.getString(paramNames[i]);
                 writer.hilightSpecial(IdentifiersDeobfuscation.printIdentifier(abc.getSwf(), usedDeobfuscations, true, constants.getString(paramNames[i])), HighlightSpecialType.PARAM_NAME, i, pdata);
+            } else if (body != null && body.generatedLocalRegNames != null && body.generatedLocalRegNames.containsKey(i + 1)) {
+                pdata.localName = body.generatedLocalRegNames.get(i + 1);
+                writer.hilightSpecial(pdata.localName, HighlightSpecialType.PARAM_NAME, i, pdata);
             } else {
                 pdata.localName = "param" + (i + 1);
                 writer.hilightSpecial(pdata.localName, HighlightSpecialType.PARAM_NAME, i, pdata);
