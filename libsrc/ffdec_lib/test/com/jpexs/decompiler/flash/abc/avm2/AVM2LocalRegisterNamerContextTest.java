@@ -137,18 +137,22 @@ public class AVM2LocalRegisterNamerContextTest {
     }
 
     @Test
-    public void testSumWhenTheNameIsInUse() {
+    public void testOperationWhenTheNameIsInUse() {
         List<GraphTargetItem> items = new ArrayList<>();
         items.add(set(1, property("x")));
-        //x + offset is still an x: xValue, not x2 and not a name from the type
+        //x is in use: a name from the terms, not x2 and not a name from the type
         items.add(set(2, new AddAVM2Item(null, null, property("x"), property("parent", "x"))));
-        //x * 2 is another quantity: no name from x
         items.add(set(3, new MultiplyAVM2Item(null, null, property("x"), integer(2))));
+        //a + 3 + x, with a local: aPlus3PlusX
+        items.add(set(4, new AddAVM2Item(null, null, new AddAVM2Item(null, null, property("x"), integer(3)), local(1))));
+        //more than three terms: no name from the terms
+        items.add(set(5, new AddAVM2Item(null, null, new AddAVM2Item(null, null, new AddAVM2Item(null, null, property("x"), integer(1)), integer(2)), integer(3))));
         Map<Integer, String> names = name(items);
         assertEquals(names.get(1), "x");
-        assertEquals(names.get(2), "xValue");
-        assertNotEquals(names.get(3), "xValue2");
-        assertFalse(names.get(3).startsWith("x"), names.get(3));
+        assertEquals(names.get(2), "xPlusParentX");
+        assertEquals(names.get(3), "xTimes2");
+        assertEquals(names.get(4), "xPlus3PlusX");
+        assertFalse(names.get(5).startsWith("xPlus"), names.get(5));
     }
 
     @Test
