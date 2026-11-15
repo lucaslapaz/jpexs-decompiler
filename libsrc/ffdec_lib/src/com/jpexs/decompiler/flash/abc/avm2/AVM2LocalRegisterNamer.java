@@ -36,6 +36,8 @@ import com.jpexs.decompiler.flash.abc.avm2.model.GetSlotAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.IncLocalAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.InitPropertyAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.LocalRegAVM2Item;
+import com.jpexs.decompiler.flash.abc.avm2.model.NullAVM2Item;
+import com.jpexs.decompiler.flash.abc.avm2.model.UndefinedAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.NewArrayAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.NewFunctionAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.NewObjectAVM2Item;
@@ -51,6 +53,8 @@ import com.jpexs.decompiler.flash.abc.avm2.model.clauses.DeclarationAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.clauses.ForEachInAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.clauses.ForInAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.operations.AsTypeAVM2Item;
+import com.jpexs.decompiler.flash.abc.avm2.model.operations.IsTypeAVM2Item;
+import com.jpexs.decompiler.flash.abc.avm2.model.operations.NegAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.operations.PreDecrementAVM2Item;
 import com.jpexs.decompiler.flash.abc.avm2.model.operations.PreIncrementAVM2Item;
 import com.jpexs.decompiler.flash.abc.types.ABCException;
@@ -63,6 +67,7 @@ import com.jpexs.decompiler.flash.configuration.Configuration;
 import com.jpexs.decompiler.graph.AbstractGraphTargetRecursiveVisitor;
 import com.jpexs.decompiler.graph.Block;
 import com.jpexs.decompiler.graph.GraphTargetItem;
+import com.jpexs.decompiler.graph.SimpleValue;
 import com.jpexs.decompiler.graph.TypeItem;
 import com.jpexs.decompiler.graph.model.BinaryOpItem;
 import com.jpexs.decompiler.graph.model.DoWhileItem;
@@ -125,6 +130,23 @@ public class AVM2LocalRegisterNamer {
 
     private static final String[] LOOP_COUNTER_NAMES = {"i", "j", "k"};
 
+    /**
+     * Property names which say little alone: the name of their owner goes
+     * before them (this.player.x -> playerX).
+     */
+    private static final Set<String> GENERIC_PROPERTIES = new HashSet<>(Arrays.asList(
+            "x", "y", "z", "width", "height", "length", "name", "value", "data", "id", "type", "index",
+            "text", "size", "rotation", "alpha", "scaleX", "scaleY", "visible", "parent", "content",
+            "numChildren", "mouseX", "mouseY", "left", "right", "top", "bottom", "code", "key", "count",
+            "time", "state", "color", "currentFrame", "totalFrames", "label", "radius", "angle"));
+
+    /**
+     * Names from the type only, which say nothing about the use.
+     */
+    private static final Set<String> WEAK_NAMES = new HashSet<>(Arrays.asList(
+            "num", "str", "flag", "obj", "value", "arr", "vec", "func", "cls", "xml", "xmlList", "dict",
+            "bytes", "ns", "item", "result", "thisObj"));
+
     static {
         RESERVED.addAll(Arrays.asList(IdentifiersDeobfuscation.reservedWordsAS3));
         RESERVED.addAll(Arrays.asList(IdentifiersDeobfuscation.reservedWordsAS3_2));
@@ -150,7 +172,13 @@ public class AVM2LocalRegisterNamer {
 
     private final Map<Integer, String> strongNames = new LinkedHashMap<>();
 
-    private final Map<Integer, List<String>> valueNames = new LinkedHashMap<>();
+    private final Map<Integer, GraphTargetItem> forEachCollections = new LinkedHashMap<>();
+
+    private final Map<Integer, List<GraphTargetItem>> valueItems = new LinkedHashMap<>();
+
+    private final Set<Integer> indexRegisters = new HashSet<>();
+
+    private final Map<Integer, String> assignedNames = new TreeMap<>();
 
     private final Map<Integer, List<String>> storeNames = new LinkedHashMap<>();
 
@@ -183,7 +211,7 @@ public class AVM2LocalRegisterNamer {
      * @return Map from register index to new name
      */
     public Map<Integer, String> name(List<GraphTargetItem> items) {
-        Map<Integer, String> ret = new TreeMap<>();
+        Map<Integer, String> ret = assignedNames;
         walkStatements(items, 0);
         if (hasWith) {
             return ret;
@@ -221,62 +249,172 @@ public class AVM2LocalRegisterNamer {
             usedNames.add(name);
         }
 
+        //first the locals named by where their value comes from or goes to,
+        //then the ones named by operations, which can use the first ones
+        List<Integer> locals = new ArrayList<>();
         for (int reg : registers) {
             if (reg < firstLocal || existingNames.containsKey(reg) || slotNames.contains(String.format(Configuration.registerNameFormat.get(), reg))) {
                 continue;
             }
-            String name = nameLocal(reg);
-            ret.put(reg, name);
-            usedNames.add(name);
+            locals.add(reg);
+        }
+        for (int round = 1; round <= 2; round++) {
+            for (int reg : locals) {
+                if (ret.containsKey(reg)) {
+                    continue;
+                }
+                String name = nameLocal(reg, round == 2);
+                if (name != null) {
+                    ret.put(reg, name);
+                    usedNames.add(name);
+                }
+            }
         }
         return ret;
+    }
+
+    /**
+     * Candidate name.
+     */
+    private static class Name {
+
+        /**
+         * Name
+         */
+        public final String name;
+
+        /**
+         * Name to use before a number when the name is taken, or null
+         */
+        public final String alternative;
+
+        /**
+         * Made from an operation (a - b, a == null...), not from where the
+         * value comes from
+         */
+        public final boolean derived;
+
+        public Name(String name, String alternative, boolean derived) {
+            this.name = name;
+            this.alternative = alternative;
+            this.derived = derived;
+        }
+
+        public static Name of(String name) {
+            return name == null ? null : new Name(name, null, false);
+        }
+
+        public Name derive() {
+            return new Name(name, alternative, true);
+        }
     }
 
     private String nameParameter(int reg, MethodInfo methodInfo) {
         String typeName = getMultinameName(methodInfo.param_types[reg - 1]);
         if ((trait instanceof TraitMethodGetterSetter) && ((TraitMethodGetterSetter) trait).kindType == Trait.TRAIT_SETTER) {
-            return unique("value");
+            return unique(Name.of("value"));
         }
         if (typeName != null && typeName.endsWith("Event")) {
-            return unique("event");
+            return unique(Name.of("event"));
         }
-        String name = consensus(storeNames.get(reg));
+        Name name = consensus(toNames(storeNames.get(reg)));
         if (name == null) {
-            name = getTypeBaseName(typeName);
+            name = Name.of(getTypeBaseName(typeName));
         }
         if (name == null) {
-            name = "value";
+            name = Name.of("value");
         }
         return unique(name);
     }
 
-    private String nameLocal(int reg) {
-        String name = strongNames.get(reg);
-        if (name == null) {
-            name = consensus(valueNames.get(reg));
+    private static List<Name> toNames(List<String> names) {
+        if (names == null) {
+            return null;
+        }
+        List<Name> ret = new ArrayList<>();
+        for (String n : names) {
+            ret.add(Name.of(n));
+        }
+        return ret;
+    }
+
+    /**
+     * Names a local.
+     *
+     * @param reg Register
+     * @param all False for the first round: only names from where the value
+     * comes from or goes to
+     * @return Name or null when it waits for the second round
+     */
+    private String nameLocal(int reg, boolean all) {
+        GraphTargetItem type = types.get(reg);
+        boolean stringType = (type instanceof TypeItem) && TypeItem.STRING.equals(type);
+        List<Name> candidates = new ArrayList<>();
+        candidates.add(Name.of(strongNames.get(reg)));
+        if (forEachCollections.containsKey(reg)) {
+            Name collection = getValueName(forEachCollections.get(reg), 0);
+            candidates.add(collection == null ? Name.of("item") : new Name(singular(collection.name), collection.alternative == null ? null : singular(collection.alternative), false));
+        }
+        Name valueName = null;
+        if (valueItems.containsKey(reg)) {
+            List<Name> names = new ArrayList<>();
+            for (GraphTargetItem value : valueItems.get(reg)) {
+                Name name = getValueName(value, 0);
+                //"a" + b is not b
+                if (name != null && name.derived && stringType) {
+                    name = null;
+                }
+                names.add(name);
+            }
+            valueName = consensus(names);
+        }
+        if (valueName != null && !valueName.derived) {
+            candidates.add(valueName);
+        }
+        candidates.add(consensus(toNames(storeNames.get(reg))));
+        for (Name candidate : candidates) {
+            if (candidate != null) {
+                return unique(candidate);
+            }
+        }
+        if (!all) {
+            return null;
+        }
+        //a name made from an operation is only used when it is free:
+        //speed2 = speed * 2 would look like another speed
+        if (valueName != null && valueName.derived) {
+            if (!usedNames.contains(valueName.name)) {
+                return valueName.name;
+            }
+            if (valueName.alternative != null && !usedNames.contains(valueName.alternative)) {
+                return valueName.alternative;
+            }
+        }
+        Name name = null;
+        if (indexRegisters.contains(reg)) {
+            name = Name.of(stringType ? "key" : "index");
+        } else if (returned.contains(reg)) {
+            name = Name.of("result");
         }
         if (name == null) {
-            name = consensus(storeNames.get(reg));
-        }
-        if (name == null && returned.contains(reg)) {
-            name = "result";
+            name = Name.of(getTypeBaseName(type));
         }
         if (name == null) {
-            name = getTypeBaseName(types.get(reg));
-        }
-        if (name == null) {
-            name = "value";
+            name = Name.of("value");
         }
         return unique(name);
     }
 
-    private String unique(String name) {
-        if (!usedNames.contains(name)) {
-            return name;
+    private String unique(Name name) {
+        if (!usedNames.contains(name.name)) {
+            return name.name;
+        }
+        if (name.alternative != null && !usedNames.contains(name.alternative)) {
+            return name.alternative;
         }
         for (int i = 2;; i++) {
-            if (!usedNames.contains(name + i)) {
-                return name + i;
+            if (!usedNames.contains(name.name + i)) {
+                return name.name + i;
             }
         }
     }
@@ -287,14 +425,18 @@ public class AVM2LocalRegisterNamer {
      * @param names Candidates (null when nothing is known)
      * @return Name or null when there are none or they disagree
      */
-    private static String consensus(List<String> names) {
+    private static Name consensus(List<Name> names) {
         if (names == null) {
             return null;
         }
         Map<String, Integer> counts = new LinkedHashMap<>();
-        for (String n : names) {
+        Map<String, Name> firstNames = new LinkedHashMap<>();
+        for (Name n : names) {
             if (n != null) {
-                counts.put(n, counts.getOrDefault(n, 0) + 1);
+                counts.put(n.name, counts.getOrDefault(n.name, 0) + 1);
+                if (!firstNames.containsKey(n.name)) {
+                    firstNames.put(n.name, n);
+                }
             }
         }
         if (counts.isEmpty()) {
@@ -312,14 +454,39 @@ public class AVM2LocalRegisterNamer {
             //each assignment says something else, the register is probably reused
             return null;
         }
-        return best;
+        return firstNames.get(best);
     }
 
-    private static void add(Map<Integer, List<String>> map, int reg, String name) {
+    /**
+     * Checks whether a name says something about the use.
+     *
+     * @param name Name
+     * @return True if it does
+     */
+    private static boolean isStrong(String name) {
+        if (name == null) {
+            return false;
+        }
+        String base = name.replaceAll("[0-9]+$", "");
+        if (WEAK_NAMES.contains(base) || base.isEmpty()) {
+            return false;
+        }
+        if (name.matches("param[0-9]+")) {
+            return false;
+        }
+        return !name.equals(String.format(Configuration.registerNameFormat.get(), getRegisterOfDefaultName(name)));
+    }
+
+    private static int getRegisterOfDefaultName(String name) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("[0-9]+").matcher(name);
+        return m.find() ? Integer.parseInt(m.group()) : -1;
+    }
+
+    private static <T> void add(Map<Integer, List<T>> map, int reg, T value) {
         if (!map.containsKey(reg)) {
             map.put(reg, new ArrayList<>());
         }
-        map.get(reg).add(name);
+        map.get(reg).add(value);
     }
 
     //---------------------------------------------------------------- tree walk
@@ -336,9 +503,8 @@ public class AVM2LocalRegisterNamer {
             if (item instanceof ForEachInAVM2Item) {
                 ForEachInAVM2Item forEach = (ForEachInAVM2Item) item;
                 int reg = getRegister(forEach.expression.object);
-                if (reg != -1 && !strongNames.containsKey(reg)) {
-                    String collectionName = getValueName(forEach.expression.collection, 0);
-                    strongNames.put(reg, collectionName != null ? singular(collectionName) : "item");
+                if (reg != -1 && !strongNames.containsKey(reg) && !forEachCollections.containsKey(reg)) {
+                    forEachCollections.put(reg, forEach.expression.collection);
                 }
             }
             if (item instanceof ForInAVM2Item) {
@@ -392,8 +558,14 @@ public class AVM2LocalRegisterNamer {
             SetLocalAVM2Item setLocal = (SetLocalAVM2Item) item;
             registers.add(setLocal.regIndex);
             if (setLocal.compoundOperator == null && setLocal.value != null) {
-                add(valueNames, setLocal.regIndex, getValueName(setLocal.value, 0));
+                add(valueItems, setLocal.regIndex, setLocal.value);
             }
+        }
+        if (item instanceof GetPropertyAVM2Item) {
+            addIndexRegister(((GetPropertyAVM2Item) item).propertyName);
+        }
+        if (item instanceof SetPropertyAVM2Item) {
+            addIndexRegister(((SetPropertyAVM2Item) item).propertyName);
         }
         if (item instanceof SetPropertyAVM2Item) {
             SetPropertyAVM2Item setProperty = (SetPropertyAVM2Item) item;
@@ -417,6 +589,15 @@ public class AVM2LocalRegisterNamer {
             int reg = getRegister(unwrap(item.value));
             if (reg != -1) {
                 returned.add(reg);
+            }
+        }
+    }
+
+    private void addIndexRegister(GraphTargetItem propertyName) {
+        if ((propertyName instanceof FullMultinameAVM2Item) && ((FullMultinameAVM2Item) propertyName).name != null) {
+            int reg = getRegister(unwrap(((FullMultinameAVM2Item) propertyName).name));
+            if (reg != -1) {
+                indexRegisters.add(reg);
             }
         }
     }
@@ -519,8 +700,108 @@ public class AVM2LocalRegisterNamer {
         }
     }
 
-    private String getValueName(GraphTargetItem value, int depth) {
-        if (depth > 5) {
+    private static boolean isLiteral(GraphTargetItem item) {
+        item = unwrap(item);
+        return (item instanceof SimpleValue) && ((SimpleValue) item).isSimpleValue();
+    }
+
+    private static String capitalize(String name) {
+        return Character.toUpperCase(name.charAt(0)) + name.substring(1);
+    }
+
+    /**
+     * Joins an owner and a property name: player + x = playerX.
+     *
+     * @param owner Owner name or null
+     * @param name Name
+     * @return Joined name or null
+     */
+    private static String join(String owner, String name) {
+        if (owner == null || name == null) {
+            return null;
+        }
+        String ret = owner + capitalize(name);
+        return IdentifiersDeobfuscation.isValidName(true, ret) && !RESERVED.contains(ret) ? ret : null;
+    }
+
+    /**
+     * Gets name of an operand: the name of a local or of where the value comes
+     * from.
+     *
+     * @param item Operand
+     * @param depth Depth
+     * @return Name or null
+     */
+    private Name getOperandName(GraphTargetItem item, int depth) {
+        return getOperandName(item, depth, true);
+    }
+
+    /**
+     * Gets name of an operand.
+     *
+     * @param item Operand
+     * @param depth Depth
+     * @param locals Use the names of locals too (an operation on a local is
+     * not the local: seconds = time % 60)
+     * @return Name or null
+     */
+    private Name getOperandName(GraphTargetItem item, int depth, boolean locals) {
+        item = unwrap(item);
+        if (item instanceof LocalRegAVM2Item) {
+            if (!locals) {
+                return null;
+            }
+            int reg = ((LocalRegAVM2Item) item).regIndex;
+            String name = assignedNames.containsKey(reg) ? assignedNames.get(reg) : existingNames.get(reg);
+            return isStrong(name) ? Name.of(name) : null;
+        }
+        if (isLiteral(item)) {
+            return null;
+        }
+        return getValueName(item, depth + 1);
+    }
+
+    /**
+     * Gets name of the owner of a property: player in this.player.x.
+     *
+     * @param object Object
+     * @param depth Depth
+     * @return Name or null (this has no name)
+     */
+    private String getOwnerName(GraphTargetItem object, int depth) {
+        Name name = getOperandName(object, depth);
+        if (name == null || !isStrong(name.name)) {
+            return null;
+        }
+        return name.name;
+    }
+
+    /**
+     * Gets name of the last property of a value (x in this.player.x).
+     *
+     * @param item Value
+     * @return Name or null
+     */
+    private String getPropertyTail(GraphTargetItem item) {
+        item = unwrap(item);
+        if (item instanceof GetPropertyAVM2Item) {
+            return getPropertyName(((GetPropertyAVM2Item) item).propertyName);
+        }
+        if (item instanceof LocalRegAVM2Item) {
+            //a local named playerX
+            String name = assignedNames.get(((LocalRegAVM2Item) item).regIndex);
+            if (name != null && name.length() > 1) {
+                char last = name.charAt(name.length() - 1);
+                if (last == 'X' || last == 'Y' || last == 'Z') {
+                    return String.valueOf(Character.toLowerCase(last));
+                }
+            }
+        }
+        return null;
+    }
+
+    private Name getValueName(GraphTargetItem value, int depth) {
+        if (depth > 6) {
             return null;
         }
         value = unwrap(value);
@@ -528,16 +809,24 @@ public class AVM2LocalRegisterNamer {
             GetPropertyAVM2Item getProperty = (GetPropertyAVM2Item) value;
             if ((getProperty.propertyName instanceof FullMultinameAVM2Item) && ((FullMultinameAVM2Item) getProperty.propertyName).name != null) {
                 //list[i]
-                String listName = getValueName(getProperty.object, depth + 1);
-                return listName == null ? null : singular(listName);
+                Name list = getOperandName(getProperty.object, depth);
+                return list == null ? null : Name.of(singular(list.name));
             }
-            return clean(getPropertyName(getProperty.propertyName));
+            String property = clean(getPropertyName(getProperty.propertyName));
+            if (property == null) {
+                return null;
+            }
+            String qualified = join(getOwnerName(getProperty.object, depth), property);
+            if (qualified != null && GENERIC_PROPERTIES.contains(property)) {
+                return new Name(qualified, null, false);
+            }
+            return new Name(property, qualified, false);
         }
         if (value instanceof GetLexAVM2Item) {
-            return clean(getMultinameName(((GetLexAVM2Item) value).propertyName));
+            return Name.of(clean(getMultinameName(((GetLexAVM2Item) value).propertyName)));
         }
         if (value instanceof GetSlotAVM2Item) {
-            return clean(getMultinameName(((GetSlotAVM2Item) value).slotName));
+            return Name.of(clean(getMultinameName(((GetSlotAVM2Item) value).slotName)));
         }
         if (value instanceof CallPropertyAVM2Item) {
             CallPropertyAVM2Item call = (CallPropertyAVM2Item) value;
@@ -552,49 +841,201 @@ public class AVM2LocalRegisterNamer {
             return getCallName(getPropertyName(call.multiname), call.receiver, call.arguments, depth);
         }
         if (value instanceof ConstructPropAVM2Item) {
-            return getTypeBaseName(getPropertyName(((ConstructPropAVM2Item) value).propertyName));
+            return Name.of(getTypeBaseName(getPropertyName(((ConstructPropAVM2Item) value).propertyName)));
         }
         if (value instanceof ConstructAVM2Item) {
             GraphTargetItem object = ((ConstructAVM2Item) value).object;
             if (object instanceof GetLexAVM2Item) {
-                return getTypeBaseName(getMultinameName(((GetLexAVM2Item) object).propertyName));
+                return Name.of(getTypeBaseName(getMultinameName(((GetLexAVM2Item) object).propertyName)));
             }
             return null;
         }
         if (value instanceof NewArrayAVM2Item) {
-            return "arr";
+            return Name.of("arr");
         }
         if (value instanceof NewObjectAVM2Item) {
-            return "obj";
+            return Name.of("obj");
         }
         if (value instanceof NewFunctionAVM2Item) {
-            return "func";
+            return Name.of("func");
         }
         if (value instanceof ThisAVM2Item) {
-            return "thisObj";
+            return Name.of("thisObj");
         }
         if (value instanceof TernarOpItem) {
             TernarOpItem ternar = (TernarOpItem) value;
-            String onTrue = getValueName(ternar.onTrue, depth + 1);
-            String onFalse = getValueName(ternar.onFalse, depth + 1);
-            return onTrue != null && onTrue.equals(onFalse) ? onTrue : null;
+            Name onTrue = getOperandName(ternar.onTrue, depth);
+            Name onFalse = getOperandName(ternar.onFalse, depth);
+            if (onTrue != null && onFalse != null) {
+                return onTrue.name.equals(onFalse.name) ? onTrue : null;
+            }
+            //a ? 0.5 : b
+            if (onTrue != null && isLiteral(ternar.onFalse)) {
+                return onTrue.derive();
+            }
+            if (onFalse != null && isLiteral(ternar.onTrue)) {
+                return onFalse.derive();
+            }
+            //a.visible ? 1 : 0
+            if (isLiteral(ternar.onTrue) && isLiteral(ternar.onFalse)) {
+                Name condition = getOperandName(ternar.expression, depth, false);
+                return condition == null ? null : condition.derive();
+            }
+            return null;
+        }
+        if (value instanceof NegAVM2Item) {
+            Name name = getOperandName(value.value, depth, false);
+            return name == null ? null : name.derive();
+        }
+        if (value instanceof IsTypeAVM2Item) {
+            String typeName = getTypeName(((IsTypeAVM2Item) value).rightSide);
+            String ret = typeName == null ? null : clean("is" + capitalize(typeName));
+            return Name.of(ret) == null ? null : Name.of(ret).derive();
+        }
+        if (value instanceof BinaryOpItem) {
+            return getOperationName((BinaryOpItem) value, depth);
         }
         return null;
     }
 
-    private String getCallName(String name, GraphTargetItem receiver, List<GraphTargetItem> arguments, int depth) {
+    private String getTypeName(GraphTargetItem type) {
+        type = unwrap(type);
+        if (type instanceof GetLexAVM2Item) {
+            return getMultinameName(((GetLexAVM2Item) type).propertyName);
+        }
+        if (type instanceof TypeItem) {
+            return ((TypeItem) type).fullTypeName.getLast();
+        }
+        return null;
+    }
+
+    private Name getOperationName(BinaryOpItem operation, int depth) {
+        String operator = operation.getOperator();
+        GraphTargetItem left = operation.leftSide;
+        GraphTargetItem right = operation.rightSide;
+        switch (operator) {
+            case "-":
+                //a.x - b.x -> dx
+                String leftTail = getPropertyTail(left);
+                if (leftTail != null && leftTail.equals(getPropertyTail(right)) && (leftTail.equals("x") || leftTail.equals("y") || leftTail.equals("z"))) {
+                    return Name.of("d" + leftTail).derive();
+                }
+            //fallthrough
+            case "+":
+            case "*":
+            case "/":
+            case "%":
+            case "&":
+            case "|":
+            case "^":
+            case "<<":
+            case ">>":
+            case ">>>":
+            case "&&":
+            case "||":
+                //only the leftmost operand: a + b * c is about a; when it is a local
+                //(seconds = time % 60) or a literal, the operation has no name
+                Name name = getOperandName(left, depth, false);
+                return name == null ? null : name.derive();
+            case "==":
+            case "===":
+            case "!=":
+            case "!==":
+                boolean equal = operator.startsWith("=");
+                GraphTargetItem other = null;
+                if (unwrap(right) instanceof NullAVM2Item || unwrap(right) instanceof UndefinedAVM2Item) {
+                    other = left;
+                } else if (unwrap(left) instanceof NullAVM2Item || unwrap(left) instanceof UndefinedAVM2Item) {
+                    other = right;
+                }
+                if (other != null) {
+                    //a != null -> hasA
+                    return prefixed(equal ? "no" : "has", getOperandName(other, depth));
+                }
+                if (!equal) {
+                    return null;
+                }
+                return prefixed("is", getOperandName(left, depth));
+        }
+        return null;
+    }
+
+    /**
+     * Name with a prefix (has + player = hasPlayer), the owner included when
+     * known (hasTp1Stage).
+     *
+     * @param prefix Prefix
+     * @param name Name or null
+     * @return Name or null
+     */
+    private static Name prefixed(String prefix, Name name) {
+        if (name == null) {
+            return null;
+        }
+        String alternative = name.alternative == null ? null : clean(prefix + capitalize(name.alternative));
+        String main = clean(prefix + capitalize(name.name));
+        if (alternative != null) {
+            return new Name(alternative, main, true);
+        }
+        return main == null ? null : new Name(main, null, true);
+    }
+
+    private Name getCallName(String name, GraphTargetItem receiver, List<GraphTargetItem> arguments, int depth) {
         if (name == null || name.isEmpty()) {
             return null;
         }
-        if (Character.isUpperCase(name.charAt(0))) {
+        if (name.equals("int") || name.equals("uint") || Character.isUpperCase(name.charAt(0))) {
             //String(x), int(x), MyClass(x) are casts
-            return arguments != null && arguments.size() == 1 ? getValueName(arguments.get(0), depth + 1) : null;
+            if (arguments != null && arguments.size() == 1) {
+                Name argumentName = getOperandName(arguments.get(0), depth);
+                if (argumentName != null || name.equals("int") || name.equals("uint")) {
+                    return argumentName;
+                }
+            }
+            //FindMaxSeparation(a, b) is a function
+            if (name.equals("int") || name.equals("uint")) {
+                return null;
+            }
+            name = Character.toLowerCase(name.charAt(0)) + name.substring(1);
+        }
+        if (receiver instanceof GetLexAVM2Item && "Math".equals(getMultinameName(((GetLexAVM2Item) receiver).propertyName))) {
+            switch (name) {
+                case "atan2":
+                case "atan":
+                case "acos":
+                case "asin":
+                    return Name.of("angle");
+                case "sqrt":
+                    return Name.of("dist");
+                case "sin":
+                case "cos":
+                case "tan":
+                case "random":
+                    return Name.of(name);
+                case "abs":
+                case "floor":
+                case "ceil":
+                case "round":
+                case "min":
+                case "max":
+                case "pow":
+                    if (arguments != null) {
+                        for (GraphTargetItem argument : arguments) {
+                            Name argumentName = getOperandName(argument, depth, false);
+                            if (argumentName != null) {
+                                return argumentName.derive();
+                            }
+                        }
+                    }
+                    return null;
+            }
+            return null;
         }
         switch (name) {
             case "toString":
             case "toLocaleString":
             case "join":
-                return "str";
+                return Name.of("str");
             case "valueOf":
             case "apply":
             case "call":
@@ -607,14 +1048,14 @@ public class AVM2LocalRegisterNamer {
             case "lastIndexOf":
             case "search":
             case "getChildIndex":
-                return "index";
+                return Name.of("index");
             case "split":
-                return "parts";
+                return Name.of("parts");
             case "pop":
             case "shift":
             case "removeAt":
-                String listName = getValueName(receiver, depth + 1);
-                return listName == null ? null : singular(listName);
+                Name listName = getOperandName(receiver, depth);
+                return listName == null ? null : Name.of(singular(listName.name));
             case "concat":
             case "slice":
             case "splice":
@@ -631,34 +1072,29 @@ public class AVM2LocalRegisterNamer {
             case "toUpperCase":
             case "replace":
             case "charAt":
-                return getValueName(receiver, depth + 1);
+                return getOperandName(receiver, depth);
             case "getTimer":
-                return "time";
+                return Name.of("time");
             case "getDefinitionByName":
             case "getDefinition":
-                return "definition";
+                return Name.of("definition");
             case "getChildAt":
             case "getChildByName":
             case "removeChild":
             case "removeChildAt":
             case "addChild":
             case "addChildAt":
-                return "child";
+                return Name.of("child");
             case "charCodeAt":
-                return "charCode";
-            case "random":
-                return "random";
-        }
-        if (receiver instanceof GetLexAVM2Item && "Math".equals(getMultinameName(((GetLexAVM2Item) receiver).propertyName))) {
-            return null;
+                return Name.of("charCode");
         }
         String[] prefixes = {"get", "create", "make", "build", "find", "compute", "calculate", "calc", "load", "read", "fetch", "generate", "new"};
         for (String prefix : prefixes) {
             if (name.length() > prefix.length() && name.startsWith(prefix) && Character.isUpperCase(name.charAt(prefix.length()))) {
-                return clean(name.substring(prefix.length()));
+                return Name.of(clean(name.substring(prefix.length())));
             }
         }
-        return clean(name);
+        return Name.of(clean(name));
     }
 
     private String getPropertyName(GraphTargetItem propertyName) {
