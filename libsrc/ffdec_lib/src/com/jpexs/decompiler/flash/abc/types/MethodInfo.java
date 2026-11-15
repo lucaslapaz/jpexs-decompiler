@@ -353,15 +353,17 @@ public class MethodInfo {
             pdata.declaration = true;
             pdata.declaredType = ptype;
             pdata.regIndex = i + 1;
-            if (!localRegNames.isEmpty()) {
+            if (body != null && body.generatedLocalRegNames != null && body.generatedLocalRegNames.containsKey(i + 1)) {
+                //the body uses this name; it is generated only when the parameter has none
+                //or only a paramN one, also from debug info
+                pdata.localName = body.generatedLocalRegNames.get(i + 1);
+                writer.hilightSpecial(pdata.localName, HighlightSpecialType.PARAM_NAME, i, pdata);
+            } else if (!localRegNames.isEmpty()) {
                 pdata.localName = localRegNames.get(i + 1); //assuming it is a slot
                 writer.hilightSpecial(IdentifiersDeobfuscation.printIdentifier(abc.getSwf(), usedDeobfuscations, true, localRegNames.get(i + 1)), HighlightSpecialType.PARAM_NAME, i, pdata);
             } else if ((paramNames.length > i) && (paramNames[i] != 0) && Configuration.paramNamesEnable.get()) {
                 pdata.localName = constants.getString(paramNames[i]);
                 writer.hilightSpecial(IdentifiersDeobfuscation.printIdentifier(abc.getSwf(), usedDeobfuscations, true, constants.getString(paramNames[i])), HighlightSpecialType.PARAM_NAME, i, pdata);
-            } else if (body != null && body.generatedLocalRegNames != null && body.generatedLocalRegNames.containsKey(i + 1)) {
-                pdata.localName = body.generatedLocalRegNames.get(i + 1);
-                writer.hilightSpecial(pdata.localName, HighlightSpecialType.PARAM_NAME, i, pdata);
             } else {
                 pdata.localName = "param" + (i + 1);
                 writer.hilightSpecial(pdata.localName, HighlightSpecialType.PARAM_NAME, i, pdata);
