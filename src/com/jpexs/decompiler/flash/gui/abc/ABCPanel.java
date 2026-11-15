@@ -1600,6 +1600,8 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
             @Override
             public void actionPerformed(ActionEvent e) {
                 reload();
+                //reload clears the script cache, the tree and the pins must get the new script packs
+                mainPanel.updateClassesList();
             }
         });
 
@@ -2639,6 +2641,8 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
                 traits.traits.remove(traitIndex);
                 ((Tag) abc.parentTag).setModified(true);
                 reload();
+                //reload clears the script cache, the tree and the pins must get the new script packs
+                mainPanel.updateClassesList();
                 abc.fireChanged();
             }
 
