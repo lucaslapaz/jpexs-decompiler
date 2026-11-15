@@ -18,6 +18,7 @@ package com.jpexs.decompiler.flash.gui.tagtree;
 
 import com.jpexs.decompiler.flash.SWF;
 import com.jpexs.decompiler.flash.abc.ABC;
+import com.jpexs.decompiler.flash.abc.ScriptPack;
 import com.jpexs.decompiler.flash.configuration.Configuration;
 import com.jpexs.decompiler.flash.gui.AppStrings;
 import com.jpexs.decompiler.flash.gui.TreeNodeType;
@@ -566,6 +567,11 @@ public class TagTreeModel extends AbstractTagTreeModel {
         if (n instanceof AS3ClassTreeItem) {
             AS3ClassTreeItem te = (AS3ClassTreeItem) n;
             if (obj == te) {
+                return true;
+            }
+            //Script packs are recreated when the script cache is cleared (SWF.clearScriptCache)
+            //and the tree can still hold the old ones, so compare them by abc, script index and path
+            if ((obj instanceof ScriptPack) && obj.equals(te)) {
                 return true;
             }
         }

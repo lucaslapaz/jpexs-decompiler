@@ -18,6 +18,7 @@ package com.jpexs.decompiler.flash.gui.taglistview;
 
 import com.jpexs.decompiler.flash.SWF;
 import com.jpexs.decompiler.flash.abc.ABC;
+import com.jpexs.decompiler.flash.abc.ScriptPack;
 import com.jpexs.decompiler.flash.configuration.Configuration;
 import com.jpexs.decompiler.flash.gui.AppStrings;
 import com.jpexs.decompiler.flash.gui.abc.ClassesListTreeModel;
@@ -393,6 +394,23 @@ public class TagListTreeModel extends AbstractTagTreeModel {
         return ret;
     }
 
+    /**
+     * Checks whether a tree node is the searched item. Script packs are
+     * recreated when the script cache is cleared (SWF.clearScriptCache) and
+     * the tree can still hold the old ones, so they are compared by abc,
+     * script index and path.
+     *
+     * @param n Tree node
+     * @param obj Searched item
+     * @return True when it matches
+     */
+    private static boolean searchMatches(TreeItem n, TreeItem obj) {
+        if (obj == n) {
+            return true;
+        }
+        return (obj instanceof ScriptPack) && obj.equals(n);
+    }
+
     @Override
     protected void searchTreeItemMulti(List<TreeItem> objs, TreeItem parent, List<TreeItem> path, Map<TreeItem, List<TreeItem>> result) {
         for (TreeItem n : getAllChildren(parent)) {
@@ -401,7 +419,7 @@ public class TagListTreeModel extends AbstractTagTreeModel {
             newPath.add(n);
 
             for (TreeItem obj : objs) {
-                if (obj == n) { //Equals or == ???
+                if (searchMatches(n, obj)) {
                     result.put(obj, newPath);
                 }
             }
@@ -415,7 +433,7 @@ public class TagListTreeModel extends AbstractTagTreeModel {
         for (TreeItem n : getAllChildren(parent)) {
 
             for (TreeItem obj : objs) {
-                if (obj == n) { //Equals or == ???
+                if (searchMatches(n, obj)) {
                     result.put(obj, parent);
                     if (result.size() == objs.size()) {
                         return;
@@ -439,7 +457,7 @@ public class TagListTreeModel extends AbstractTagTreeModel {
             newPath.addAll(path);
             newPath.add(n);
 
-            if (obj == n) { //Equals or == ???
+            if (searchMatches(n, obj)) {
                 return newPath;
             }
 
